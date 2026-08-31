@@ -44,7 +44,5 @@ public class MotionEvent {
 
     public void setSource(int source) {}
 
-    public void setActionButton(int actionButton) {}
-
     public void recycle() {}
 }
