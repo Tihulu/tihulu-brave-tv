@@ -139,6 +139,12 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         updateCursorOverlay();
     }
 
+    @Override
+    public void checkForUpdates() {
+        if (mRoot == null) return;
+        TvGitHubUpdater.checkAndInstall(this, mRoot);
+    }
+
     public void goBack() {
         dispatchShortcut(KEY_BACK, 0);
     }
