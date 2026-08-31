@@ -131,14 +131,92 @@ def transform(header: str, source: str, tooltips_build: str) -> tuple[str, str, 
     return header, source, True
 
 
+def transform_sources_gni(text: str) -> tuple[str, bool]:
+    """Keep Android circular-include allowances in lockstep with their deps.
+
+    Brave 1.94.117 adds //brave/browser/notifications to chrome/browser deps only
+    when enable_brave_ads is true, but adds the same target to Android's
+    allow_circular_includes_from unconditionally. GN rejects an allowlist label that
+    is absent from deps, which breaks our ARM32 Ads-disabled profile before compile.
+    """
+
+    marked = _marker_state(text, "GN")
+    safe_block = (
+        f"  // {MARKER}_GN_BEGIN\n"
+        "  if (enable_brave_ads) {\n"
+        "    brave_chrome_browser_allow_circular_includes_from +=\n"
+        '        [ "//brave/browser/notifications" ]\n'
+        "  }\n"
+        f"  // {MARKER}_GN_END\n"
+    )
+
+    if marked:
+        if safe_block not in text:
+            raise CompatError("Brave Android GN compatibility markers exist but the patch body drifted")
+        return text, True
+
+    # Validate the corresponding dependency is really Ads-gated before changing
+    # the circular allowlist. If upstream moves notifications elsewhere, fail closed.
+    ads_deps_anchor = """if (enable_brave_ads) {
+  brave_chrome_browser_deps += [
+    "//brave/browser/brave_ads",
+    "//brave/browser/brave_ads:impl",
+    "//brave/browser/brave_ads/creatives/search_result_ad",
+    "//brave/browser/brave_ads/tabs",
+    "//brave/browser/notifications",
+"""
+    if ads_deps_anchor not in text:
+        raise CompatError(
+            "Brave Ads notifications dependency is no longer in the expected Ads-gated block"
+        )
+
+    old_android_block = """if (is_android) {
+  brave_chrome_browser_allow_circular_includes_from += [
+    "//brave/browser/android:android_browser_process",
+    "//brave/browser/android:tabs_impl",
+    "//brave/browser/android/preferences",
+    "//brave/browser/notifications",
+  ]
+}
+"""
+    new_android_block = """if (is_android) {
+  brave_chrome_browser_allow_circular_includes_from += [
+    "//brave/browser/android:android_browser_process",
+    "//brave/browser/android:tabs_impl",
+    "//brave/browser/android/preferences",
+  ]
+""" + safe_block + "}\n"
+
+    if old_android_block not in text:
+        # A newer Brave may already have fixed the graph. Accept that only if the
+        # notification allowance is already visibly Ads-gated.
+        if (
+            'if (enable_brave_ads)' in text
+            and '[ "//brave/browser/notifications" ]' in text
+            and '"//brave/browser/notifications",\n  ]\n}\n' not in text
+        ):
+            return text, False
+        raise CompatError(
+            "Brave Android notifications circular-include block changed upstream; review before patching"
+        )
+
+    return _replace_once(
+        text,
+        old_android_block,
+        new_android_block,
+        "Brave Android notifications circular-include graph",
+    ), True
+
+
 def apply(project: Path) -> None:
     project = project.resolve()
     brave = project / "src/brave"
     header_path = brave / "browser/brave_ads/ads_service_factory.h"
     source_path = brave / "browser/brave_ads/ads_service_factory.cc"
     tooltips_build_path = brave / "browser/brave_ads/tooltips/BUILD.gn"
+    sources_gni_path = brave / "browser/sources.gni"
 
-    required = [header_path, source_path, tooltips_build_path]
+    required = [header_path, source_path, tooltips_build_path, sources_gni_path]
     missing = [str(path) for path in required if not path.is_file()]
     if missing:
         raise CompatError("Missing Brave Android compatibility input(s): " + ", ".join(missing))
@@ -146,17 +224,25 @@ def apply(project: Path) -> None:
     header = header_path.read_text(encoding="utf-8")
     source = source_path.read_text(encoding="utf-8")
     tooltips_build = tooltips_build_path.read_text(encoding="utf-8")
+    sources_gni = sources_gni_path.read_text(encoding="utf-8")
 
-    new_header, new_source, needs_compat = transform(header, source, tooltips_build)
+    new_header, new_source, needs_tooltip_compat = transform(header, source, tooltips_build)
+    new_sources_gni, needs_gn_compat = transform_sources_gni(sources_gni)
 
     # Write only after every source and invariant has been validated.
     _atomic_write_text(header_path, new_header)
     _atomic_write_text(source_path, new_source)
+    _atomic_write_text(sources_gni_path, new_sources_gni)
 
-    if needs_compat:
+    if needs_tooltip_compat:
         print("Brave Android compatibility: Ads tooltip factory uses interface ownership; excluded desktop tooltip implementation will not leak linker symbols.")
     else:
-        print("Brave Android compatibility: upstream Ads tooltip factory is already safe; no patch needed.")
+        print("Brave Android compatibility: upstream Ads tooltip factory is already safe; no tooltip patch needed.")
+
+    if needs_gn_compat:
+        print("Brave Android compatibility: notifications circular include now follows enable_brave_ads, matching its dependency graph.")
+    else:
+        print("Brave Android compatibility: notifications circular include graph is already safe; no GN patch needed.")
 
 
 def main() -> int:
