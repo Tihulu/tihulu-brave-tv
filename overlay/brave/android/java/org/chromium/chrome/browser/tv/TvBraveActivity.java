@@ -91,11 +91,12 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     }
 
     /**
-     * ChromeActivity owns a final onDestroy(). onDestroyInternal() is the supported cleanup hook
-     * and runs while the FullscreenManager is still alive.
+     * ChromeActivity owns a final onDestroy(). ChromeTabbedActivity exposes onDestroyInternal()
+     * publicly in Chromium 152, so this override must preserve that visibility while removing the
+     * fullscreen observer before Chromium destroys the manager.
      */
     @Override
-    protected void onDestroyInternal() {
+    public void onDestroyInternal() {
         if (mFullscreenObserverRegistered) {
             getFullscreenManager().removeObserver(mFullscreenObserver);
             mFullscreenObserverRegistered = false;
