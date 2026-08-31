@@ -1,1 +1,1 @@
-package android.content; public interface DialogInterface { interface OnShowListener { void onShow(DialogInterface d); } }
+package android.content; import android.view.KeyEvent; public interface DialogInterface { interface OnShowListener { void onShow(DialogInterface d); } interface OnDismissListener { void onDismiss(DialogInterface d); } interface OnKeyListener { boolean onKey(DialogInterface d,int keyCode,KeyEvent event); } }
