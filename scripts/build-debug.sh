@@ -3,6 +3,13 @@ set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 INPUT_ARCH="${1:-arm64}"
 WORKSPACE="${BRAVE_TV_WORKSPACE:-$ROOT/.work/brave-browser}"
+BRAVE_CORE="$WORKSPACE/src/brave"
+COMPAT_FILES=(
+  browser/brave_ads/ads_service_factory.h
+  browser/brave_ads/ads_service_factory.cc
+)
+COMPAT_MARKER="TIHULU_ANDROID_ADS_TOOLTIP_COMPAT"
+COMPAT_APPLIED=0
 
 if [[ -f "$ROOT/.tools/env.sh" ]]; then
   # shellcheck disable=SC1091
@@ -17,14 +24,46 @@ case "$INPUT_ARCH" in
   *) echo "Unsupported architecture: $INPUT_ARCH" >&2; exit 2 ;;
 esac
 
+if [[ ! -d "$BRAVE_CORE/.git" ]]; then
+  echo "Missing initialized Brave checkout at $BRAVE_CORE. Run bootstrap first." >&2
+  exit 2
+fi
+
+# The compatibility patch is intentionally ephemeral. This keeps the pinned Brave
+# checkout clean between runs, so bootstrap/ref switching never mistakes it for user
+# work. Recover only our own marked leftovers from an interrupted prior run; never
+# reset an unknown user modification.
+for compat_file in "${COMPAT_FILES[@]}"; do
+  if ! git -C "$BRAVE_CORE" diff --quiet -- "$compat_file" \
+      || ! git -C "$BRAVE_CORE" diff --cached --quiet -- "$compat_file"; then
+    if grep -q "$COMPAT_MARKER" "$BRAVE_CORE/$compat_file" 2>/dev/null; then
+      echo "Recovering an owned compatibility patch left by an interrupted build: $compat_file" >&2
+      git -C "$BRAVE_CORE" restore --staged --worktree -- "$compat_file" 2>/dev/null \
+        || git -C "$BRAVE_CORE" restore -- "$compat_file"
+    else
+      echo "Refusing to overwrite unknown local Brave change: $compat_file" >&2
+      echo "Commit/stash/revert that change before building." >&2
+      exit 2
+    fi
+  fi
+done
+
+cleanup_compat() {
+  if (( COMPAT_APPLIED != 0 )); then
+    git -C "$BRAVE_CORE" restore -- "${COMPAT_FILES[@]}" 2>/dev/null || true
+  fi
+}
+trap cleanup_compat EXIT INT TERM
+
 # Apply narrow Brave upstream compatibility fixes before the Tihulu overlay. The
 # compatibility script is idempotent and fails closed if the pinned Brave source
 # no longer matches the audited Android link hazard.
 python3 "$ROOT/scripts/apply_brave_android_compat.py" "$WORKSPACE"
+COMPAT_APPLIED=1
 python3 "$ROOT/scripts/apply_overlay.py" "$WORKSPACE"
 python3 "$ROOT/scripts/verify_overlay.py" "$WORKSPACE"
 
-cd "$WORKSPACE/src/brave"
+cd "$BRAVE_CORE"
 if command -v pnpm >/dev/null 2>&1; then
   PNPM=(pnpm)
 elif command -v corepack >/dev/null 2>&1; then
