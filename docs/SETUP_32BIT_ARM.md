@@ -24,7 +24,9 @@ If `arm64-v8a` is **not** present and `armeabi-v7a` is present, build the `arm` 
 Tihulu TV Browser handles this conservatively:
 
 - A 32-bit browser process automatically enables Chromium's supported `enable-low-end-device-mode` path.
-- A 64-bit TV that Android itself marks as a low-RAM device also uses that profile.
+- ARM32 builds disable **Brave Rewards** and **Brave Ads**. Those subsystems are not needed for normal browsing or Brave Shields, and excluding them reduces code/background-service pressure on small TV boxes.
+- **Brave Shields / ad blocking stays enabled.** `enable_brave_ads=false` means Brave's rewards/advertising subsystem, not the Shields blocker.
+- A 64-bit TV that Android itself marks as a low-RAM device also uses the runtime low-memory profile, but 64-bit builds keep the normal Brave feature set unless explicitly configured otherwise.
 - The virtual cursor overlay is allocated only when Cursor mode is actually used; normal D-pad startup does not create it.
 - Tihulu does **not** use `--single-process`, `--process-per-site`, a renderer-process cap, or other shortcuts that weaken Chromium's process isolation or tend to create compatibility problems.
 - The in-app updater keeps 32-bit ARM and ARM64 release assets separate.
@@ -56,19 +58,22 @@ Verify that exactly one target is connected:
 adb devices
 ```
 
-Then confirm the ABI:
+Then confirm the ABI and Android API level:
 
 ```bash
 adb shell getprop ro.product.cpu.abilist
+adb shell getprop ro.build.version.sdk
 ```
 
-For this guide the expected form is similar to:
+For this guide the ABI should look similar to:
 
 ```text
 armeabi-v7a,armeabi
 ```
 
-You can also inspect the device RAM:
+The installer checks the synced Chromium minimum SDK before attempting installation, so an old Android image fails before `adb install` rather than with a misleading package error.
+
+You can also inspect device RAM:
 
 ```bash
 adb shell cat /proc/meminfo | head -n 3
@@ -98,7 +103,7 @@ curl -fsSL https://raw.githubusercontent.com/Tihulu/tihulu-brave-tv/main/install
 
 If the Brave/Chromium checkout already exists, do **not** delete `.work/brave-browser`.
 
-Use:
+For a normal resume that also rechecks host dependencies:
 
 ```bash
 cd ~/tihulu-brave-tv && \
@@ -108,7 +113,18 @@ INSTALL_TO_TV=1 \
 ./scripts/build-apk-one-line.sh arm
 ```
 
-The script reuses the existing Chromium source/dependency tree and creates a separate ARM32 build output.
+If bootstrap/dependencies have already succeeded and you are retrying a compiler or linker failure, use the faster incremental path:
+
+```bash
+cd ~/tihulu-brave-tv && \
+git pull --ff-only && \
+./scripts/build-debug.sh arm && \
+./scripts/install-apk.sh arm
+```
+
+The incremental builder fingerprints the Tihulu overlay. If the overlay is unchanged and still verifies correctly, it does not rewrite generated Java/resources just before Ninja/Siso starts. This preserves as much completed build work as possible.
+
+Changing ARM32 GN feature arguments, Brave/Chromium source, or Tihulu source can still legitimately cause GN/Ninja to rebuild affected targets. That is expected and does not mean the large Chromium checkout is being downloaded again.
 
 ## 4. Install an already-built ARM32 APK
 
@@ -123,9 +139,11 @@ If more than one ADB device is connected, the installer intentionally refuses to
 ADB_SERIAL=TV_SERIAL ./scripts/install-apk.sh arm
 ```
 
+The installer checks both the device ABI and the native libraries inside the APK, so an ARM64 output is not silently installed as an ARM32 build.
+
 ## Low-memory usage recommendations
 
-The app automatically uses Chromium's low-end profile on a 32-bit process, but websites themselves can still consume large amounts of memory. For a small TV box:
+The app automatically uses Chromium's low-end profile on a 32-bit process and the ARM32 APK omits Rewards/Brave Ads, but websites themselves can still consume large amounts of memory. For a small TV box:
 
 - Prefer **D-pad mode** when you do not need the virtual cursor.
 - Keep only a few actively used tabs open, especially on 1–2 GB boxes.
@@ -141,6 +159,16 @@ The low-memory profile is deliberately limited to Chromium-supported behavior. I
 ### `INSTALL_FAILED_NO_MATCHING_ABIS`
 
 The wrong APK was used. Rebuild/install with `arm`, not `arm64`.
+
+### `INSTALL_FAILED_OLDER_SDK`
+
+Check:
+
+```bash
+adb shell getprop ro.build.version.sdk
+```
+
+The installer normally detects this before installation by reading the minimum SDK from the synced Chromium source.
 
 ### Tabs reload or the renderer disappears under load
 
@@ -159,7 +187,11 @@ Capture the exact `dlopen`, linker, or `UnsatisfiedLinkError` message from `adb 
 
 ### Build succeeds for ARM64 but not ARM32
 
-Do not remove the source checkout. ARM32 and ARM64 use the same source tree but different output directories, so an ARM-specific compile failure should be debugged from its first compiler/linker error.
+Do not remove the source checkout. ARM32 and ARM64 use the same source tree but different output directories, so an ARM-specific compile/link failure should be debugged from its first compiler/linker error.
+
+### Linker references a desktop-only Brave implementation
+
+Tihulu carries a narrow, fail-closed Android compatibility pass for the known Brave Ads tooltip ownership issue. The ARM32 low-memory profile also excludes Brave Ads/Rewards entirely. Do not fix an undefined symbol by manually copying desktop UI `.cc` files into the Android target; those files depend on desktop tooltip/UI implementations that Android deliberately excludes.
 
 ## Updating later
 
