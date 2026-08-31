@@ -1,9 +1,13 @@
 import ast
+import re
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 OVERLAY_JAVA = ROOT / "overlay/brave/android/java/org/chromium/chrome/browser/tv"
+TOP_LEVEL_TYPE = re.compile(
+    r"(?m)^(?:public\s+)?(?:final\s+)?(?:class|enum|interface)\s+[A-Za-z_][A-Za-z0-9_]*\b"
+)
 
 
 def read_java_classes(script: Path) -> list[str]:
@@ -28,6 +32,17 @@ class OverlayJavaInventoryTests(unittest.TestCase):
                 declared,
                 f"{script_name} JAVA_CLASSES must exactly match overlay Java sources; "
                 "otherwise a file can pass local javac but be missing from Chromium GN",
+            )
+
+    def test_chromium_java_sources_have_exactly_one_top_level_type(self):
+        for path in sorted(OVERLAY_JAVA.glob("*.java")):
+            text = path.read_text(encoding="utf-8")
+            types = TOP_LEVEL_TYPE.findall(text)
+            self.assertEqual(
+                1,
+                len(types),
+                f"{path.name} has {len(types)} top-level Java types; Chromium --chromium-code "
+                "compile_java.py requires exactly one type per source file",
             )
 
 
