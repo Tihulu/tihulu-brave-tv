@@ -24,12 +24,23 @@ If `arm64-v8a` is **not** present and `armeabi-v7a` is present, build the `arm` 
 Tihulu TV Browser handles this conservatively:
 
 - A 32-bit browser process automatically enables Chromium's supported `enable-low-end-device-mode` path.
-- ARM32 builds disable **Brave Rewards** and **Brave Ads**. Those subsystems are not needed for normal browsing or Brave Shields, and excluding them reduces code/background-service pressure on small TV boxes.
-- **Brave Shields / ad blocking stays enabled.** `enable_brave_ads=false` means Brave's rewards/advertising subsystem, not the Shields blocker.
-- A 64-bit TV that Android itself marks as a low-RAM device also uses the runtime low-memory profile, but 64-bit builds keep the normal Brave feature set unless explicitly configured otherwise.
 - The virtual cursor overlay is allocated only when Cursor mode is actually used; normal D-pad startup does not create it.
+- **Brave Shields / ad blocking stays enabled.**
 - Tihulu does **not** use `--single-process`, `--process-per-site`, a renderer-process cap, or other shortcuts that weaken Chromium's process isolation or tend to create compatibility problems.
 - The in-app updater keeps 32-bit ARM and ARM64 release assets separate.
+
+### Why Rewards / Brave Ads are not compiled out on ARM32
+
+The pinned Brave `v1.94.117` Android build graph does not consistently support `enable_brave_rewards=false` or `enable_brave_ads=false`. In this revision, Android Java/JNI registration still includes classes such as `BraveRewardsNativeWorker` and `BraveAdsNativeHelper` even when their native dependency graph is removed. That creates generated JNI registrations which point at missing native `Muxed_*` symbols and makes `libchrome.so` fail to link.
+
+For stability, ARM32 therefore preserves Brave's normal Android JNI feature graph. Rewards remains an upstream opt-in feature and the Tihulu TV controls do not depend on or invoke it. The important RAM-saving behavior on a 1–2 GB box comes from Chromium low-end mode, avoiding unnecessary Tihulu overlays, keeping tab count modest, and letting Android/Chromium perform their normal memory-pressure handling.
+
+Do not re-add these ARM32 GN arguments unless the pinned Brave version has been audited to support them end-to-end:
+
+```text
+--gn=enable_brave_rewards:false
+--gn=enable_brave_ads:false
+```
 
 You can confirm the active runtime profile later from **About Tihulu TV Browser**. A 32-bit build should report:
 
@@ -124,7 +135,7 @@ git pull --ff-only && \
 
 The incremental builder fingerprints the Tihulu overlay. If the overlay is unchanged and still verifies correctly, it does not rewrite generated Java/resources just before Ninja/Siso starts. This preserves as much completed build work as possible.
 
-Changing ARM32 GN feature arguments, Brave/Chromium source, or Tihulu source can still legitimately cause GN/Ninja to rebuild affected targets. That is expected and does not mean the large Chromium checkout is being downloaded again.
+Changing ARM32 GN arguments, Brave/Chromium source, or Tihulu source can still legitimately cause GN/Ninja to rebuild affected targets. That is expected and does not mean the large Chromium checkout is being downloaded again.
 
 ## 4. Install an already-built ARM32 APK
 
@@ -143,7 +154,7 @@ The installer checks both the device ABI and the native libraries inside the APK
 
 ## Low-memory usage recommendations
 
-The app automatically uses Chromium's low-end profile on a 32-bit process and the ARM32 APK omits Rewards/Brave Ads, but websites themselves can still consume large amounts of memory. For a small TV box:
+The app automatically uses Chromium's low-end profile on a 32-bit process, but websites themselves can still consume large amounts of memory. For a small TV box:
 
 - Prefer **D-pad mode** when you do not need the virtual cursor.
 - Keep only a few actively used tabs open, especially on 1–2 GB boxes.
@@ -189,9 +200,13 @@ Capture the exact `dlopen`, linker, or `UnsatisfiedLinkError` message from `adb 
 
 Do not remove the source checkout. ARM32 and ARM64 use the same source tree but different output directories, so an ARM-specific compile/link failure should be debugged from its first compiler/linker error.
 
-### Linker references a desktop-only Brave implementation
+### Linker references Brave Ads tooltip implementation
 
-Tihulu carries a narrow, fail-closed Android compatibility pass for the known Brave Ads tooltip ownership issue. The ARM32 low-memory profile also excludes Brave Ads/Rewards entirely. Do not fix an undefined symbol by manually copying desktop UI `.cc` files into the Android target; those files depend on desktop tooltip/UI implementations that Android deliberately excludes.
+Tihulu carries a narrow, fail-closed Android compatibility pass for the known Brave Ads tooltip ownership issue. Do not fix an undefined symbol by manually copying desktop UI `.cc` files into the Android target; those files depend on desktop tooltip/UI implementations that Android deliberately excludes.
+
+### Linker references `BraveRewardsNativeWorker` / `Muxed_*`
+
+Check the build command. ARM32 must **not** contain `--gn=enable_brave_rewards:false` or `--gn=enable_brave_ads:false` on the pinned `v1.94.117` baseline. Those flags leave Android JNI registration out of sync with the native graph in this Brave revision.
 
 ## Updating later
 
