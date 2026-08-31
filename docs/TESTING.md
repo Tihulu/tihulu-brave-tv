@@ -31,38 +31,40 @@ Before tagging a release, test at minimum:
 | Area | Test |
 | --- | --- |
 | Launcher | Starts from Google TV home after cold process kill without startup ANR/crash |
-| Focus | D-pad reaches links/buttons/forms on several sites |
-| Dynamic top bar | Hold Up or Menu opens it; focus is unmistakable; Down/Back closes it |
-| Navigation mode | Hold OK toggles D-pad/Cursor exactly once per hold |
-| Scrolling | Focus navigation can progress through long pages |
+| Web focus | D-pad reaches links/buttons/forms and the focused element has a clear high-contrast TV outline |
+| Dynamic top bar | Hold Up or Menu opens it; selected action is unmistakable; Down/Back closes it |
+| Navigation mode | Use the explicit Mode button in the top bar to switch D-pad/Cursor |
+| Scrolling | Focus navigation can progress through long pages without repeat-event stalls |
 | Keyboard | Omnibox and page input open TV IME |
 | Cursor | D-pad moves pointer, repeat accelerates smoothly, pointer remains in bounds |
 | Click | Links, buttons and native browser controls receive click |
-| Browser UI | Back, forward, tab switcher and menus still work |
+| Browser UI | Top bar, Tabs and TV Controls all show obvious selected-item feedback |
 | Video | HTML5 playback, TV-clean fullscreen entry/exit, remote controls, Back exit |
 | Lifecycle | Home -> resume, screen sleep -> resume, process recreation |
 | Inputs | Remote, USB/Bluetooth keyboard, USB/Bluetooth mouse |
-| Resources | Multi-tab memory pressure does not create crash loops |
+| Resources | Multi-tab memory pressure does not create ANR/crash loops |
 | Security | No sandbox/security flags disabled by TV patches |
 
 ### Remote-only navigation contract
 
 The minimum supported remote is six keys: four D-pad directions, OK and Back. Extra Menu/Info/Guide keys are optional accelerators, never requirements.
 
-1. In **D-pad mode**, arrows and short OK remain Chromium-native page navigation.
-2. Hold **OK** once: navigation changes to **Cursor** exactly once, even if Android emits many key-repeat events.
-3. In **Cursor mode**, D-pad moves the pointer; holding a direction should accelerate gradually rather than jump immediately.
-4. Short **OK** clicks the pointer location.
-5. Hold **OK** again to return to D-pad mode.
-6. Hold **Up** from page content to open the top browser bar. In Cursor mode, pushing Up again when the pointer is already at the top edge should also open it.
-7. If the remote has **Menu**, **Info** or **Guide**, that key should toggle the top bar directly.
-8. The top bar must live in a separate Dialog window, not inside Chromium's `DecorView`. Opening it must not detach or rebuild Chrome toolbar/content views.
-9. The focused top-bar button must be visually obvious by both strong background contrast and scale change.
-10. **Left/Right** moves focus across the bar. **OK** activates. **Down** or **Back** closes the bar and returns control to page content.
-11. Browser-bar actions close the bar before navigating/opening another dialog. The navigation-mode button is the exception: it updates in place so the current mode is immediately visible.
-12. Cold-start the browser and do not touch the remote for at least 20 seconds. No Tihulu persistent view, cursor, layout listener or fullscreen observer should be created on the startup path.
+1. In **D-pad mode**, arrows and short OK use Chromium spatial/page navigation.
+2. The web-focused element must have the Tihulu TV UA focus ring: a high-contrast 4 px outline with 3 px offset. This is a renderer stylesheet rule, not JavaScript injected on every key press.
+3. Android key-repeat is intentionally thinned before reaching Chromium spatial navigation on low-end hardware. The first press and key-up still pass through; repeated focus calculations must not flood the renderer.
+4. Hold **Up**, then release, to open the top browser bar. The bar is created after the repeat storm rather than while the key is still repeating.
+5. If the remote has **Menu**, **Info** or **Guide**, that key toggles the top bar directly.
+6. The top bar lives in a separate Dialog window, not inside Chromium's `DecorView`. Opening it must not detach or rebuild Chrome toolbar/content views.
+7. The focused top-bar button uses a strong red background plus explicit `▶ ... ◀` text markers. No scale animation is used on low-end hardware.
+8. **Left/Right** moves focus across the bar. **OK** activates. **Down** or **Back** closes the bar and returns control to page content.
+9. Use the bar's **Mode: D-pad / Mode: Cursor** button to change page navigation mode. Do not overload long-OK: short and held OK must remain predictable for page controls and video players.
+10. In **Cursor mode**, D-pad moves the pointer and holding a direction accelerates gradually. Movement updates only the visual pointer; it must not emit a synthetic `HOVER_MOVE` for every repeat event.
+11. Short **OK** in Cursor mode emits the actual pointer click.
+12. Browser-bar actions close the bar before navigating/opening another dialog. The Mode button is the exception: it updates in place so the current mode is immediately visible.
+13. Tabs and TV Controls must use the same strong red selected-item feedback rather than Android's subtle default focus treatment.
+14. Cold-start the browser and do not touch the remote for at least 20 seconds. No Tihulu persistent view, cursor, layout listener or fullscreen observer should be created on the startup path.
 
-### Startup ANR regression
+### Startup and input ANR regression
 
 On low-memory Android TV, collect a cold-start trace after `am force-stop`. A failure like:
 
@@ -72,9 +74,11 @@ Input event dispatching timed out ... TvBraveActivity ... Waited 5001ms for Focu
 
 is an ANR even if there is no `FATAL EXCEPTION`. Treat it as a release blocker.
 
-The TV integration deliberately keeps `performPostInflationStartup()` inert: it may retain the already-created `DecorView` reference, but it must not add a browser bar, cursor, layout listener, Dialog or fullscreen-manager observer there. TV UI is created only after an explicit remote action.
+The TV integration deliberately keeps `performPostInflationStartup()` inert apart from caching TV mode and retaining the already-created `DecorView` reference. It must not add a browser bar, cursor, layout listener, Dialog or fullscreen-manager observer there. TV UI is created only after an explicit remote action.
 
-Run this twice: once immediately after boot and once after the device has been used for several minutes. Confirm there is no `Input event dispatching timed out`, `ANR`, `FATAL EXCEPTION`, `SIGSEGV`, `SIGABRT`, or Chromium toolbar assertion.
+After cold start, stress D-pad navigation for at least 60 seconds on a simple page and a complex page. Hold each direction long enough to generate Android repeat events. Confirm there is no multi-second freeze, `Input event dispatching timed out`, `ANR`, `FATAL EXCEPTION`, `SIGSEGV`, `SIGABRT`, or Chromium toolbar assertion.
+
+Repeat the stress test in Cursor mode. Pointer movement should remain responsive and should not create synthetic hover-event storms. Test the same behavior in the first-run onboarding cursor.
 
 ### TV-clean HTML5 fullscreen
 
@@ -117,14 +121,17 @@ Then verify:
 2. Open **About Tihulu TV Browser** and confirm `Runtime: 32-bit · low-memory profile`.
 3. Cold-launch in D-pad mode and confirm normal browsing works without first entering Cursor mode or opening Tihulu UI.
 4. Leave the app untouched for 20 seconds after cold launch and verify no startup ANR occurs.
-5. Hold Up to open the dynamic top bar; move focus left/right, activate one action, then reopen and close it with Down and Back.
-6. Hold OK to switch to Cursor mode; verify exactly one toggle per hold and verify repeat acceleration in all four directions.
-7. Open one normal site, then progressively open several tabs while watching for renderer reloads, ANRs or crash loops.
-8. Play a 1080p HTML5 video, enter/leave fullscreen and then switch to another tab.
-9. Send the app Home -> resume, then repeat after screen sleep.
-10. Close unused tabs after deliberate memory pressure and confirm the browser recovers instead of remaining in a crash/reload loop.
-11. Capture `adb logcat` around any `OutOfMemoryError`, linker failure, renderer crash, LMKD kill, ANR or repeated tab reload.
-12. Do not solve an ARM32 failure by adding `--single-process`, `--process-per-site`, disabling sandbox/Site Isolation, or forcing software rendering.
+5. On several sites, verify D-pad selection is clearly marked by the 4 px high-contrast web focus ring.
+6. Hold directions repeatedly for at least 60 seconds and verify repeat throttling prevents severe stalls or ANRs.
+7. Hold Up and release to open the dynamic top bar; move focus left/right, verify the red `▶ ... ◀` selection, then close it with Down and Back.
+8. Use the Mode button to switch to Cursor; verify D-pad movement/acceleration and OK click without hover-triggered jank.
+9. Open Tabs and TV Controls and verify the selected button is obvious in both dialogs.
+10. Open one normal site, then progressively open several tabs while watching for renderer reloads, ANRs or crash loops.
+11. Play a 1080p HTML5 video, enter/leave fullscreen and then switch to another tab.
+12. Send the app Home -> resume, then repeat after screen sleep.
+13. Close unused tabs after deliberate memory pressure and confirm the browser recovers instead of remaining in a crash/reload loop.
+14. Capture `adb logcat` around any `OutOfMemoryError`, linker failure, renderer crash, LMKD kill, ANR or repeated tab reload.
+15. Do not solve an ARM32 failure by adding `--single-process`, `--process-per-site`, disabling sandbox/Site Isolation, or forcing software rendering.
 
 On a particularly small 1–2 GB TV box, repeat the test after reboot so other apps do not distort the baseline.
 
