@@ -44,11 +44,9 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         if (!isTelevision()) return;
 
         mRoot = (ViewGroup) getWindow().getDecorView();
-        mRoot.post(
-                () -> {
-                    initializeCursor();
-                    installTvBrowserBar();
-                });
+        // Cursor objects are intentionally lazy. Most low-memory TV boxes can stay in D-pad mode
+        // without allocating another overlay view/state pair for the lifetime of the browser.
+        mRoot.post(this::installTvBrowserBar);
         mRoot.addOnLayoutChangeListener(
                 (view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
                     if (mCursorState == null) return;
@@ -89,6 +87,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         }
 
         if (mNavigationMode == TvNavigationMode.CURSOR) {
+            ensureCursorInitialized();
             int keyCode = event.getKeyCode();
             if (isDirectionKey(keyCode)) {
                 if (event.getAction() == KeyEvent.ACTION_DOWN) moveCursorForKey(keyCode);
@@ -115,6 +114,9 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     @Override
     public void setNavigationMode(TvNavigationMode mode) {
         mNavigationMode = mode == null ? TvNavigationMode.DPAD : mode;
+        if (mNavigationMode == TvNavigationMode.CURSOR) {
+            ensureCursorInitialized();
+        }
         if (mCursorOverlay != null) {
             mCursorOverlay.setVisibility(
                     mNavigationMode == TvNavigationMode.CURSOR ? View.VISIBLE : View.GONE);
@@ -134,6 +136,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
 
     @Override
     public void centerCursor() {
+        ensureCursorInitialized();
         if (mCursorState == null) return;
         mCursorState.center();
         updateCursorOverlay();
@@ -211,7 +214,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         }
     }
 
-    private void initializeCursor() {
+    private void ensureCursorInitialized() {
         if (mRoot == null || mCursorState != null) return;
         float density = getResources().getDisplayMetrics().density;
         mCursorState =
@@ -220,7 +223,8 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         mCursorOverlay = new TvCursorOverlay(this);
         int size = Math.round(CURSOR_SIZE_DP * density);
         mCursorOverlay.layout(0, 0, size, size);
-        mCursorOverlay.setVisibility(View.GONE);
+        mCursorOverlay.setVisibility(
+                mNavigationMode == TvNavigationMode.CURSOR ? View.VISIBLE : View.GONE);
         ViewGroupOverlay overlay = mRoot.getOverlay();
         overlay.add(mCursorOverlay);
         updateCursorOverlay();
