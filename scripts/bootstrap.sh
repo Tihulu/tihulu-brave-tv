@@ -84,8 +84,7 @@ pnpm_run install
 # googlesource endpoints can temporarily return HTTP 429 / RESOURCE_EXHAUSTED even
 # though the large Chromium repository itself downloaded successfully. Never delete
 # the checkout in that case: resume only the missing dependencies with bounded gclient
-# parallelism and exponential-ish backoff, then let Brave's normal sync finish patches
-# and hooks.
+# parallelism and backoff, then let Brave's normal sync finish patches and hooks.
 recover_gclient_sync() {
   local chromium_tag chromium_ref attempt delay
   chromium_tag="$(node -e 'const p=require("./package.json"); process.stdout.write(String(p.config?.projects?.chrome?.tag || ""))')"
@@ -129,7 +128,14 @@ recover_gclient_sync() {
   return 1
 }
 
-if ! pnpm_run run init --target_os=android --target_arch="$ARCH"; then
+# If a previous init already created the Chromium repository and root .gclient but did
+# not complete, do not launch another full --init. That can repeat hundreds of parallel
+# network operations and hit the same anonymous googlesource quota again.
+if [[ -d "$WORKSPACE/src/.git" && -f "$WORKSPACE/.gclient" \
+      && ! -f "$WORKSPACE/.brave_latest_successful_sync.json" ]]; then
+  echo "Detected an incomplete existing Chromium checkout; resuming it instead of reinitializing." >&2
+  recover_gclient_sync
+elif ! pnpm_run run init --target_os=android --target_arch="$ARCH"; then
   recover_gclient_sync
 fi
 
