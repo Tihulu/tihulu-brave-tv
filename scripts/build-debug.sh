@@ -8,8 +8,9 @@ COMPAT_FILES=(
   browser/brave_ads/ads_service_factory.h
   browser/brave_ads/ads_service_factory.cc
   browser/sources.gni
+  android/java/org/chromium/chrome/browser/firstrun/WelcomeOnboardingActivity.java
 )
-COMPAT_MARKER="TIHULU_ANDROID_ADS_TOOLTIP_COMPAT"
+COMPAT_MARKERS_REGEX='TIHULU_ANDROID_ADS_TOOLTIP_COMPAT|TIHULU_TV_ONBOARDING_CURSOR_COMPAT'
 COMPAT_APPLIED=0
 
 if [[ -f "$ROOT/.tools/env.sh" ]]; then
@@ -30,14 +31,14 @@ if [[ ! -d "$BRAVE_CORE/.git" ]]; then
   exit 2
 fi
 
-# The compatibility patch is intentionally ephemeral. This keeps the pinned Brave
-# checkout clean between runs, so bootstrap/ref switching never mistakes it for user
+# Compatibility patches are intentionally ephemeral. This keeps the pinned Brave
+# checkout clean between runs, so bootstrap/ref switching never mistakes them for user
 # work. Recover only our own marked leftovers from an interrupted prior run; never
 # reset an unknown user modification.
 for compat_file in "${COMPAT_FILES[@]}"; do
   if ! git -C "$BRAVE_CORE" diff --quiet -- "$compat_file" \
       || ! git -C "$BRAVE_CORE" diff --cached --quiet -- "$compat_file"; then
-    if grep -q "$COMPAT_MARKER" "$BRAVE_CORE/$compat_file" 2>/dev/null; then
+    if grep -Eq "$COMPAT_MARKERS_REGEX" "$BRAVE_CORE/$compat_file" 2>/dev/null; then
       echo "Recovering an owned compatibility patch left by an interrupted build: $compat_file" >&2
       git -C "$BRAVE_CORE" restore --staged --worktree -- "$compat_file" 2>/dev/null \
         || git -C "$BRAVE_CORE" restore -- "$compat_file"
@@ -60,6 +61,7 @@ trap cleanup_compat EXIT INT TERM
 # reverted on failure. All compatibility files were proven clean immediately above.
 COMPAT_APPLIED=1
 python3 "$ROOT/scripts/apply_brave_android_compat.py" "$WORKSPACE"
+python3 "$ROOT/scripts/apply_brave_tv_onboarding_compat.py" "$WORKSPACE"
 
 # Do not rewrite identical Tihulu Java/resources on every retry. The fingerprinted
 # wrapper still runs the full verifier and reapplies automatically when any overlay
