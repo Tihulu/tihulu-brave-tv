@@ -14,9 +14,11 @@ javac -d "$TMP" \
   tests/java/org/chromium/chrome/browser/tv/TvCursorStateTest.java
 java -ea -cp "$TMP" org.chromium.chrome.browser.tv.TvCursorStateTest
 
-echo '[3/6] Android Java surface compile with minimal stubs'
+echo '[3/6] Android Java surface compile + updater parser test'
 STUB_TMP="$(mktemp -d)"
 find tests/stubs -name '*.java' -print0 | xargs -0 javac -d "$STUB_TMP" overlay/brave/android/java/org/chromium/chrome/browser/tv/*.java
+javac -cp "$STUB_TMP" -d "$STUB_TMP" tests/java/org/chromium/chrome/browser/tv/TvGitHubUpdaterTest.java
+java -ea -cp "$STUB_TMP" org.chromium.chrome.browser.tv.TvGitHubUpdaterTest
 rm -rf "$STUB_TMP"
 
 echo '[4/6] Shell syntax'
