@@ -122,48 +122,54 @@ def main() -> int:
     manifest = texts.get(manifest_rel, "")
     for token in [
         INSTALL_PERMISSION,
-        LEANBACK_FEATURE,
-        FAKETOUCH_FEATURE,
+        'android:name="android.software.leanback"',
+        'android:name="android.hardware.faketouch"',
         "org.chromium.chrome.browser.tv.TvBraveActivity",
         "android.intent.category.LEANBACK_LAUNCHER",
         "android.software.leanback.supports_touch",
         'android:icon="@drawable/tihulu_tv_icon"',
         'android:banner="@drawable/tihulu_tv_banner"',
-        'android:windowSoftInputMode="adjustResize"',
-        'android:hardwareAccelerated="false"',
-        'android:resizeableActivity="true"',
-        'android:supportsPictureInPicture="true"',
-        'android:name="android.activity.launch_mode" android:value="singleInstancePerTask"',
     ]:
         _require_count(manifest, token, 1, manifest_rel, errors)
 
-    config_changes = [
-        "orientation",
-        "keyboardHidden",
-        "keyboard",
-        "screenSize",
-        "mcc",
-        "mnc",
-        "screenLayout",
-        "smallestScreenSize",
-        "uiMode",
-        "navigation",
-        "density",
-        "touchscreen",
-        "colorMode",
-        "fontScale",
-    ]
     activity_begin = manifest.find("TIHULU_TV_BROWSER_MANIFEST_BEGIN")
     activity_end = manifest.find("TIHULU_TV_BROWSER_MANIFEST_END")
     if activity_begin >= 0 and activity_end > activity_begin:
         activity_block = manifest[activity_begin:activity_end]
+        for token in [
+            'android:windowSoftInputMode="adjustResize"',
+            'android:hardwareAccelerated="false"',
+            'android:resizeableActivity="true"',
+            'android:supportsPictureInPicture="true"',
+            'android:name="android.activity.launch_mode" android:value="singleInstancePerTask"',
+            'android:name="android.software.leanback.supports_touch" android:value="true"',
+        ]:
+            _require_count(activity_block, token, 1, manifest_rel + " TV activity", errors)
+
+        config_changes = [
+            "orientation",
+            "keyboardHidden",
+            "keyboard",
+            "screenSize",
+            "mcc",
+            "mnc",
+            "screenLayout",
+            "smallestScreenSize",
+            "uiMode",
+            "navigation",
+            "density",
+            "touchscreen",
+            "colorMode",
+            "fontScale",
+        ]
         for item in config_changes:
             if item not in activity_block:
                 errors.append(f"{manifest_rel}: TV activity configChanges is missing {item}")
-        if f'android:name="{LEANBACK_FEATURE}" android:required="true"' not in manifest:
-            errors.append(f"{manifest_rel}: leanback feature must be required=true")
-        if f'android:name="{FAKETOUCH_FEATURE}" android:required="false"' not in manifest:
-            errors.append(f"{manifest_rel}: faketouch feature must be required=false")
+
+    if f'android:name="{LEANBACK_FEATURE}" android:required="true"' not in manifest:
+        errors.append(f"{manifest_rel}: leanback feature must be required=true")
+    if f'android:name="{FAKETOUCH_FEATURE}" android:required="false"' not in manifest:
+        errors.append(f"{manifest_rel}: faketouch feature must be required=false")
 
     java_dir = project / "src/brave/android/java/org/chromium/chrome/browser/tv"
     for name in JAVA_CLASSES:
