@@ -141,13 +141,15 @@ def transform_sources_gni(text: str) -> tuple[str, bool]:
     """
 
     marked = _marker_state(text, "GN")
+    # GN/GNI comments use '#', not C/C++ '//'. Keeping syntax-correct ownership markers
+    # matters because this file is parsed directly by `gn gen` before any compilation begins.
     safe_block = (
-        f"  // {MARKER}_GN_BEGIN\n"
+        f"  # {MARKER}_GN_BEGIN\n"
         "  if (enable_brave_ads) {\n"
         "    brave_chrome_browser_allow_circular_includes_from +=\n"
         '        [ "//brave/browser/notifications" ]\n'
         "  }\n"
-        f"  // {MARKER}_GN_END\n"
+        f"  # {MARKER}_GN_END\n"
     )
 
     if marked:
