@@ -200,15 +200,19 @@ ensure_node24
 ensure_python_env
 
 mkdir -p "$TOOLS/bin"
-cat > "$ENV_FILE" <<EOF_ENV
-export PATH="$TOOLS/bin:$TOOLS/node24/bin:$TOOLS/python/bin:\$PATH"
-# depot_tools changed its top-level python3 wrapper in August 2026 to prefer a
-# hermetic CPython that intentionally has no pip. Brave's DEPS still has hooks
-# that invoke `python3 -m pip`, so use depot_tools' documented system-Python
-# escape hatch. PATH points that escape hatch at the isolated venv above rather
-# than at Ubuntu's externally-managed system environment.
+# Generate executable shell syntax without an expanding heredoc. In particular,
+# command-substitution markers in documentation comments must never be evaluated
+# while writing env.sh.
+{
+  printf 'export PATH="%s/bin:%s/node24/bin:%s/python/bin:$PATH"\n' "$TOOLS" "$TOOLS" "$TOOLS"
+  cat <<'EOF_ENV'
+# depot_tools may prefer a hermetic CPython that intentionally has no pip.
+# Brave still has hooks that invoke python3 -m pip, so use depot_tools' bypass.
+# PATH above points the bypass at this project's isolated venv rather than at
+# Ubuntu's externally-managed system Python environment.
 export DEPOT_TOOLS_PYTHON_BYPASS=1
 EOF_ENV
+} > "$ENV_FILE"
 
 # shellcheck disable=SC1090
 source "$ENV_FILE"
