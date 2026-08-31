@@ -134,7 +134,7 @@ class TvUiAndInstallerTests(unittest.TestCase):
         self.assertIn('python_env="$TOOLS/python"', installer)
         self.assertIn('"$host_python" -m venv "$python_env"', installer)
         self.assertIn("export DEPOT_TOOLS_PYTHON_BYPASS=1", installer)
-        self.assertIn("$TOOLS/python/bin", installer)
+        self.assertIn('%s/python/bin:$PATH', installer)
         self.assertIn("python3 -m pip --version", installer)
         self.assertIn(
             'export DEPOT_TOOLS_PYTHON_BYPASS="${DEPOT_TOOLS_PYTHON_BYPASS:-1}"',
