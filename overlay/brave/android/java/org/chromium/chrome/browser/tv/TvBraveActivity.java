@@ -105,7 +105,8 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         // open the top command bar; DPAD_DOWN or Back from the dialog returns to page content.
         if (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_UP
                 && event.getAction() == KeyEvent.ACTION_DOWN
-                && event.getRepeatCount() > 0) {
+                && event.getRepeatCount() > 0
+                && !mUpLongPressConsumed) {
             mUpLongPressConsumed = true;
             showBrowserBar();
             return true;
@@ -118,12 +119,19 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         }
 
         // Match common TV-browser behaviour: long OK toggles page navigation mode. Short OK
-        // remains a normal page activation/click.
+        // remains a normal page activation/click. Only the first repeated ACTION_DOWN toggles;
+        // later repeats are consumed until key-up so one hold cannot oscillate the mode.
         if (isSelectKey(event.getKeyCode())
                 && event.getAction() == KeyEvent.ACTION_DOWN
-                && event.getRepeatCount() > 0) {
+                && event.getRepeatCount() > 0
+                && !mSelectLongPressConsumed) {
             mSelectLongPressConsumed = true;
             toggleNavigationMode();
+            return true;
+        }
+        if (isSelectKey(event.getKeyCode())
+                && event.getAction() == KeyEvent.ACTION_DOWN
+                && mSelectLongPressConsumed) {
             return true;
         }
         if (isSelectKey(event.getKeyCode())
