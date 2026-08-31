@@ -4,8 +4,9 @@ set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 TOOLS="$ROOT/.tools"
 ENV_FILE="$TOOLS/env.sh"
-GIT_MIN="2.41.0"
+GIT_MIN="2.46.0"
 GIT_FALLBACK_VERSION="2.54.0"
+GIT_FALLBACK_SHA256="f689162364c10de79ef89aa8dbf48731eb057e34edbbd20aca510ce0154681a3"
 NODE_MIN="24.16.0"
 NODE_MAX="25.0.0"
 PNPM_MIN="11.9.0"
@@ -119,12 +120,21 @@ ensure_git() {
 
   local prefix="$TOOLS/git-$GIT_FALLBACK_VERSION"
   if [[ ! -x "$prefix/bin/git" ]]; then
-    echo "System Git $current is older than Brave's required $GIT_MIN; building Git $GIT_FALLBACK_VERSION locally."
-    local tmp
+    echo "System Git $current is older than depot_tools' recommended $GIT_MIN; building Git $GIT_FALLBACK_VERSION locally."
+    local tmp archive
     tmp="$(mktemp -d)"
-    curl -fsSL "https://www.kernel.org/pub/software/scm/git/git-${GIT_FALLBACK_VERSION}.tar.xz" \
-      -o "$tmp/git.tar.xz"
-    tar -xJf "$tmp/git.tar.xz" -C "$tmp"
+    archive="$tmp/git.tar.xz"
+    if ! curl -fsSL "https://www.kernel.org/pub/software/scm/git/git-${GIT_FALLBACK_VERSION}.tar.xz" -o "$archive"; then
+      rm -rf "$tmp"
+      echo "Failed to download Git $GIT_FALLBACK_VERSION." >&2
+      exit 2
+    fi
+    if ! echo "$GIT_FALLBACK_SHA256  $archive" | sha256sum --check --strict -; then
+      rm -rf "$tmp"
+      echo "Git source archive checksum verification failed." >&2
+      exit 2
+    fi
+    tar -xJf "$archive" -C "$tmp"
     pushd "$tmp/git-$GIT_FALLBACK_VERSION" >/dev/null
     make configure
     ./configure --prefix="$prefix"
@@ -200,17 +210,13 @@ ensure_node24
 ensure_python_env
 
 mkdir -p "$TOOLS/bin"
-# Generate executable shell syntax without an expanding heredoc. In particular,
-# command-substitution markers in documentation comments must never be evaluated
-# while writing env.sh.
+# Generate executable shell syntax without an expanding heredoc. The project-local
+# Python is kept first for our scripts; Brave's own build/env.sh supplies its PYTHONPATH
+# immediately before gclient hooks are run.
 {
   printf 'export PATH="%s/bin:%s/node24/bin:%s/python/bin:$PATH"\n' "$TOOLS" "$TOOLS" "$TOOLS"
   cat <<'EOF_ENV'
-# depot_tools may prefer a hermetic CPython that intentionally has no pip.
-# Brave still has hooks that invoke python3 -m pip, so use depot_tools' bypass.
-# PATH above points the bypass at this project's isolated venv rather than at
-# Ubuntu's externally-managed system Python environment.
-export DEPOT_TOOLS_PYTHON_BYPASS=1
+# Tihulu host toolchain. Brave hook-specific PATH/PYTHONPATH setup lives in bootstrap.sh.
 EOF_ENV
 } > "$ENV_FILE"
 
@@ -235,7 +241,7 @@ ensure_pnpm() {
 ensure_pnpm
 
 if ! version_ge "$(git --version | awk '{print $3}')" "$GIT_MIN"; then
-  echo "Git 2.41+ is required, but $(git --version) is active." >&2
+  echo "Git >=$GIT_MIN is required by this build wrapper, but $(git --version) is active." >&2
   exit 2
 fi
 NODE_VERSION="$(node -p 'process.versions.node')"
