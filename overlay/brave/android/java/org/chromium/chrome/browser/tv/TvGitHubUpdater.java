@@ -14,6 +14,9 @@ import android.os.Environment;
 import android.view.View;
 import android.widget.Toast;
 
+import org.chromium.net.ChromiumNetworkAdapter;
+import org.chromium.net.NetworkTrafficAnnotationTag;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -34,6 +37,25 @@ final class TvGitHubUpdater {
     private static final String APK_MIME = "application/vnd.android.package-archive";
     private static final long POLL_TIMEOUT_MS = 2L * 60L * 60L * 1000L;
     private static final AtomicBoolean UPDATE_RUNNING = new AtomicBoolean(false);
+    private static final NetworkTrafficAnnotationTag TRAFFIC_ANNOTATION =
+            NetworkTrafficAnnotationTag.createComplete(
+                    "tihulu_tv_github_release_check",
+                    """
+                    semantics {
+                      sender: "Tihulu TV Browser updater"
+                      description:
+                        "Checks the Tihulu TV Browser GitHub release API when the user explicitly "
+                        "asks for an application update."
+                      trigger: "User selects Check for Tihulu updates."
+                      data: "No browsing or application data; only standard network metadata."
+                      destination: WEBSITE
+                      user_data { type: NONE }
+                    }
+                    policy {
+                      cookies_allowed: NO
+                      setting: "The request only occurs after explicit user action."
+                      policy_exception_justification: "Not applicable."
+                    }""");
 
     private TvGitHubUpdater() {}
 
@@ -116,7 +138,9 @@ final class TvGitHubUpdater {
 
     private static ReleaseInfo fetchLatestRelease() throws IOException {
         HttpURLConnection connection =
-                (HttpURLConnection) new URL(LATEST_RELEASE_API).openConnection();
+                (HttpURLConnection)
+                        ChromiumNetworkAdapter.openConnection(
+                                new URL(LATEST_RELEASE_API), TRAFFIC_ANNOTATION);
         connection.setConnectTimeout(10_000);
         connection.setReadTimeout(15_000);
         connection.setRequestProperty("Accept", "application/vnd.github+json");
