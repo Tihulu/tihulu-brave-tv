@@ -14,6 +14,8 @@ MARKERS = {
         "TvCursorState.java",
         "TvGitHubUpdater.java",
         "TvAboutPanel.java",
+        "TvBuildInfo.java",
+        "TvBraveUpstream.java",
     ],
     "src/chrome/android/chrome_java_resources.gni": [
         "TIHULU_TV_BROWSER_RESOURCE_BEGIN",
@@ -61,6 +63,8 @@ def main() -> int:
         "TvMouseDispatcher.java",
         "TvControlPanel.java",
         "TvAboutPanel.java",
+        "TvBuildInfo.java",
+        "TvBraveUpstream.java",
         "TvBrowserBar.java",
         "TvTabPanel.java",
         "TvGitHubUpdater.java",
@@ -69,6 +73,15 @@ def main() -> int:
         rel = Path("src/brave/android/java/org/chromium/chrome/browser/tv") / name
         if not (project / rel).is_file():
             errors.append(f"missing {rel}")
+
+    build_info = (
+        project
+        / "src/brave/android/java/org/chromium/chrome/browser/tv/TvBuildInfo.java"
+    )
+    if build_info.is_file():
+        text = build_info.read_text(encoding="utf-8")
+        if 'BRAVE_VERSION = "development"' in text or 'CHROMIUM_VERSION = "unknown"' in text:
+            errors.append("TvBuildInfo.java still contains template engine versions")
 
     for name, label in [
         ("tihulu_tv_banner.png", "TV banner"),
