@@ -15,6 +15,7 @@ The goal is to keep Brave's browser engine, Shields, tab model and Chromium comp
 - **Tihulu branding** with a dedicated launcher icon, Android TV banner and About panel.
 - **Android TV launcher support** through `LEANBACK_LAUNCHER`.
 - TV-friendly hardware declarations so a touchscreen is not required.
+- **32-bit memory protection** using Chromium's supported low-end device mode without weakening Site Isolation or the renderer sandbox/process model.
 
 > [!IMPORTANT]
 > This is an **unofficial community project**. It is not affiliated with, endorsed by, or distributed by Brave Software. The app name used by this project is **Tihulu TV Browser**. Brave and Chromium trademarks belong to their respective owners.
@@ -30,7 +31,7 @@ The goal is to keep Brave's browser engine, Shields, tab model and Chromium comp
 - [x] Branded About panel
 - [x] Native Chromium spatial navigation switch on TV
 - [x] D-pad / cursor navigation modes
-- [x] Virtual pointer overlay
+- [x] Virtual pointer overlay, lazy-loaded when Cursor mode is used
 - [x] Remote OK-to-click in cursor mode
 - [x] Always-visible TV browser bar with large focus targets
 - [x] TV tab-control panel
@@ -38,6 +39,8 @@ The goal is to keep Brave's browser engine, Shields, tab model and Chromium comp
 - [x] Address-bar / TV keyboard shortcut
 - [x] Pointer/mouse capable TV metadata
 - [x] Overlay verification and regression tests
+- [x] Separate ARM32 and ARM64 setup guidance
+- [x] Chromium low-end runtime profile for 32-bit / Android low-RAM TV processes
 - [ ] Real-device Google TV smoke test
 - [ ] Fullscreen-video polish
 - [ ] Per-site preferred navigation mode
@@ -46,9 +49,39 @@ The goal is to keep Brave's browser engine, Shields, tab model and Chromium comp
 - [ ] TV-optimized downloads UI
 - [ ] Release signing / Play TV packaging
 
+## Choose the correct Android TV architecture first
+
+Connect the TV with ADB and check its Android ABI list:
+
+```bash
+adb shell getprop ro.product.cpu.abi
+adb shell getprop ro.product.cpu.abilist
+```
+
+Use the architecture-specific guide:
+
+- **32-bit ARM only** — for example `armeabi-v7a,armeabi`: [`docs/SETUP_32BIT_ARM.md`](docs/SETUP_32BIT_ARM.md)
+- **64-bit ARM** — `arm64-v8a` is present: [`docs/SETUP_64BIT_ARM.md`](docs/SETUP_64BIT_ARM.md)
+
+If a device exposes only `armeabi-v7a`, an `arm64` APK cannot run on it. The same large Chromium source checkout can build both targets; do not duplicate or delete the source tree just to switch between ARM32 and ARM64.
+
 ## Why use native spatial navigation?
 
 Chromium already contains a spatial-navigation mode intended for devices without a normal mouse or touchscreen, including TV-style controllers. Tihulu TV Browser enables that path on Android TV instead of injecting JavaScript into every page. This reduces page breakage and keeps focus behavior inside Blink.
+
+## 32-bit / low-RAM policy
+
+A 32-bit browser process has a much tighter virtual address space than a 64-bit browser process. Tihulu therefore enables Chromium's own `enable-low-end-device-mode` when the TV browser process is 32-bit. A 64-bit process also gets the profile when Android marks the device as low-RAM.
+
+This is intentionally conservative. Tihulu does **not** use `--single-process`, `--process-per-site`, or an artificial renderer-process limit just to reduce RAM; those shortcuts can hurt isolation, stability, or compatibility. The virtual cursor is also created only when Cursor mode is selected.
+
+The About panel reports the active runtime class, for example:
+
+```text
+Runtime: 32-bit · low-memory profile
+```
+
+See the [32-bit setup guide](docs/SETUP_32BIT_ARM.md) for low-memory operating recommendations and troubleshooting.
 
 ## Architecture
 
@@ -59,9 +92,9 @@ Tihulu TV Browser repo
         |
         |  scripts/bootstrap.sh
         v
-Brave Core checkout in .work/brave-browser/src/brave
+Pinned Brave Core checkout in .work/brave-browser/src/brave
         |
-        |  pnpm run init --target_os=android
+        |  pnpm run init/sync --target_os=android
         v
 Brave + Chromium source checkout
         |
@@ -78,26 +111,50 @@ Keeping the TV code in a separate overlay makes Brave/Chromium updates easier to
 
 ## One-line APK build (Ubuntu / Pop!_OS / Debian)
 
-For a normal 64-bit Google TV target (`arm64`), the supported one-line host setup + build path is:
+### ARM64 Google TV / Android TV
 
 ```bash
-sudo apt-get update && sudo apt-get install -y curl && curl -fsSL https://raw.githubusercontent.com/Tihulu/tihulu-brave-tv/main/install.sh | bash
+sudo apt-get update && sudo apt-get install -y curl && \
+  curl -fsSL https://raw.githubusercontent.com/Tihulu/tihulu-brave-tv/main/install.sh | \
+  ARCH=arm64 BRAVE_GCLIENT_RECOVERY_JOBS=4 bash
 ```
 
-This installs the required host packages, ensures Git 2.41+, installs a checksum-verified compatible Node.js 24 toolchain and pnpm >=11.9.0 when needed, initializes Brave/Chromium, runs Chromium's Android dependency installer, applies/verifies the TV overlay and builds a Debug APK.
+Build and install to a connected ARM64 TV:
 
-Useful variants:
+```bash
+curl -fsSL https://raw.githubusercontent.com/Tihulu/tihulu-brave-tv/main/install.sh | \
+  ARCH=arm64 BRAVE_GCLIENT_RECOVERY_JOBS=4 INSTALL_TO_TV=1 bash
+```
+
+### 32-bit ARM TV / TV box
+
+```bash
+sudo apt-get update && sudo apt-get install -y curl && \
+  curl -fsSL https://raw.githubusercontent.com/Tihulu/tihulu-brave-tv/main/install.sh | \
+  ARCH=arm BRAVE_GCLIENT_RECOVERY_JOBS=4 bash
+```
+
+Build and install to a connected 32-bit ARM TV:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Tihulu/tihulu-brave-tv/main/install.sh | \
+  ARCH=arm BRAVE_GCLIENT_RECOVERY_JOBS=4 INSTALL_TO_TV=1 bash
+```
+
+The host setup installs the required packages, ensures Git 2.46+, installs a checksum-verified compatible Node.js 24 toolchain and pnpm >=11.9.0 when needed, initializes the pinned Brave/Chromium source tree, runs Chromium's Android dependency installer, applies/verifies the TV overlay and builds a Debug APK.
+
+Other supported architecture variants include:
 
 ```bash
 # x86_64 Android target
 curl -fsSL https://raw.githubusercontent.com/Tihulu/tihulu-brave-tv/main/install.sh | ARCH=x64 bash
 
-# Build and install to a connected adb TV
-curl -fsSL https://raw.githubusercontent.com/Tihulu/tihulu-brave-tv/main/install.sh | INSTALL_TO_TV=1 bash
+# 32-bit x86 Android target
+curl -fsSL https://raw.githubusercontent.com/Tihulu/tihulu-brave-tv/main/install.sh | ARCH=x86 bash
 ```
 
 > [!NOTE]
-> The one-line command automates setup; it does not make Chromium small. Brave initialization downloads a very large source/dependency tree and the full compile can take a long time.
+> The one-line command automates setup; it does not make Chromium small. Brave initialization downloads a very large source/dependency tree and the full compile can take a long time. Preserve `.work/brave-browser` after partial downloads or build errors unless a specific diagnosis proves the checkout itself is unrecoverable.
 
 ## ADB + Google TV installation
 
@@ -139,10 +196,11 @@ adb connect TV_IP:ADB_PORT
 
 The pairing port and normal ADB connection port may be different; use the values shown on the TV.
 
-### 3. Verify the TV is ready
+### 3. Verify the TV and target ABI
 
 ```bash
 adb devices
+adb shell getprop ro.product.cpu.abilist
 ```
 
 A working connection should show the TV with the state `device`. If it shows `unauthorized`, unlock/check the TV screen and accept the computer authorization prompt. If it shows `offline`, reconnect or restart ADB:
@@ -155,20 +213,28 @@ adb devices
 
 ### 4. Build and install automatically
 
-Once `adb devices` shows the TV as `device`, run:
+Use the architecture-specific command above. For an existing checkout:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Tihulu/tihulu-brave-tv/main/install.sh | INSTALL_TO_TV=1 bash
+# ARM64
+cd ~/tihulu-brave-tv && git pull --ff-only && \
+BRAVE_GCLIENT_RECOVERY_JOBS=4 INSTALL_TO_TV=1 ./scripts/build-apk-one-line.sh arm64
+
+# ARM32
+cd ~/tihulu-brave-tv && git pull --ff-only && \
+BRAVE_GCLIENT_RECOVERY_JOBS=4 INSTALL_TO_TV=1 ./scripts/build-apk-one-line.sh arm
 ```
 
-The build script finds the newest generated Brave APK for the requested architecture and installs it with `adb install -r`.
+The build script finds the newest generated Brave APK for the requested architecture, checks that the APK archive is valid, and installs it with `adb install -r`.
 
-If the APK is already built, install it without rebuilding:
+If the APK is already built:
 
 ```bash
-cd ~/tihulu-brave-tv
-./scripts/install-apk.sh arm64
+./scripts/install-apk.sh arm64  # ARM64
+./scripts/install-apk.sh arm    # ARM32
 ```
+
+If several ADB devices are connected, the installer refuses to guess; set `ADB_SERIAL=...` explicitly.
 
 The TV launcher entry is **Tihulu TV Browser**.
 
@@ -176,17 +242,17 @@ For troubleshooting, pairing examples, multiple-device handling and manual APK i
 
 ## Manual build (Ubuntu / Pop!_OS / Debian)
 
-A Brave/Chromium build is large. Brave documents that initialization pulls many repositories and tens of gigabytes of source code. Make sure you have substantial free disk space before starting.
+A Brave/Chromium build is large. Make sure you have substantial free disk space before starting. Around 200 GB of free space is a safer starting point for the initial source/dependency tree plus build outputs.
 
 ### 1. Install the host prerequisites
 
-Brave's current Android tooling requires Git 2.41+, Python 3, Node.js >=24.16.0 and <25, and pnpm >=11.9.0. You can let this repository manage those requirements with:
+The current wrapper requires Git 2.46+, Python 3, Node.js >=24.16.0 and <25, and pnpm >=11.9.0. Let the repository manage compatible local tools with:
 
 ```bash
 ./scripts/install-host-deps.sh
 ```
 
-For a fully manual setup:
+For a fully manual baseline:
 
 ```bash
 sudo apt update
@@ -199,7 +265,7 @@ sudo apt install -y \
   adb
 
 node --version   # should be >=24.16.0 and <25
-git --version    # should be 2.41 or newer
+git --version    # project wrapper requires >=2.46
 python3 --version
 ```
 
@@ -214,21 +280,16 @@ cd tihulu-brave-tv
 
 ### 3. Bootstrap Brave for Android
 
-For a modern Google TV device, `arm64` is the usual target:
+Choose the target after checking `ro.product.cpu.abilist`:
 
 ```bash
-./scripts/bootstrap.sh arm64
+./scripts/bootstrap.sh arm64  # arm64-v8a present
+./scripts/bootstrap.sh arm    # armeabi-v7a only
 ```
 
-This creates the Brave checkout under `.work/brave-browser/src/brave`, runs Brave's Android initialization and then applies the TV overlay.
+This creates the Brave checkout under `.work/brave-browser/src/brave`, pins Brave Core to the reviewed tag in `config/brave-core-ref`, initializes/synchronizes Chromium and then applies the TV overlay.
 
-If you already have an initialized Brave checkout, skip the download and point the overlay script at its project root:
-
-```bash
-python3 scripts/apply_overlay.py /path/to/brave-browser
-```
-
-The project root is the directory that contains `src/brave` and `src/chrome` after Brave initialization.
+If you already have an initialized compatible Brave checkout, the wrapper reuses it. Do not delete the large checkout to switch between `arm` and `arm64`.
 
 ### 4. Install Chromium/Android build dependencies
 
@@ -240,7 +301,7 @@ cd .work/brave-browser
 cd -
 ```
 
-If Brave/Chromium reports that your distribution is unsupported, Brave documents `--unsupported` as an alternative:
+If Brave/Chromium reports that your distribution is unsupported:
 
 ```bash
 .work/brave-browser/src/build/install-build-deps.sh --android --unsupported
@@ -250,32 +311,19 @@ If Brave/Chromium reports that your distribution is unsupported, Brave documents
 
 ```bash
 ./scripts/build-debug.sh arm64
+# or
+./scripts/build-debug.sh arm
 ```
 
 The wrapper reapplies/verifies the TV overlay first, then invokes Brave's current Android build command with APK output enabled.
 
-### 6. Connect a Google TV / Android TV device
-
-Enable **Developer options** and **USB debugging** or **Wireless debugging** on the TV, then follow the full [`ADB installation guide`](docs/ADB_INSTALL.md).
-
-Check the connection:
+### 6. Connect and install
 
 ```bash
 adb devices
-```
-
-### 7. Install the APK
-
-Because Brave output filenames can change between architectures/versions, the install helper discovers the newest Brave APK:
-
-```bash
 ./scripts/install-apk.sh arm64
-```
-
-Or install a known APK directly:
-
-```bash
-adb install -r /path/to/Brave*.apk
+# or
+./scripts/install-apk.sh arm
 ```
 
 The TV launcher entry is **Tihulu TV Browser**.
@@ -311,8 +359,8 @@ The TV Controls dialog includes:
 - Switch between **D-pad** and **Cursor** mode.
 - **Address / Keyboard**, which sends Chrome's `Ctrl+L` shortcut so the omnibox receives focus and Android can display its keyboard.
 - **Tabs**, with previous/next/new/close-current actions.
-- **Check for updates**, which checks packaged APKs on GitHub Releases.
-- **About Tihulu TV Browser**, with the project logo and the **Based on Brave & Chromium** attribution.
+- **Check for Tihulu updates**, which checks packaged APKs on GitHub Releases.
+- **About Tihulu TV Browser**, with the project logo, engine versions and active runtime memory profile.
 - **Center cursor**.
 
 External USB/Bluetooth keyboards and mice continue to use Android/Chromium's normal input paths.
@@ -330,20 +378,23 @@ The Android overlay copies both files into Chromium's packaged drawable resource
 
 See [`docs/BRANDING.md`](docs/BRANDING.md) for asset and release usage.
 
-## Updating Brave
+## Updating the Brave/Chromium baseline
 
-The actual Brave/Chromium checkout is ignored by this repository. To update it:
+The default build is intentionally pinned to the reviewed Brave tag stored in:
 
-```bash
-cd .work/brave-browser/src/brave
-git pull
-pnpm run sync --target_os=android
-cd ../../../..
-python3 scripts/apply_overlay.py .work/brave-browser
-./scripts/check.sh
+```text
+config/brave-core-ref
 ```
 
-Always re-run the checks after an upstream update. The patcher deliberately fails rather than guessing if important upstream anchors have moved.
+Do **not** update the production baseline with an unreviewed `git pull` of Brave `master`. To move to a new stable Brave release:
+
+1. Put the intended stable Brave tag in `config/brave-core-ref`.
+2. Run the normal bootstrap/build path for the target architecture.
+3. Let the bootstrap synchronize the matching Chromium revision and reapply the Tihulu overlay.
+4. Run `./scripts/check.sh`.
+5. Complete the full APK compile and real-TV smoke test before publishing the update.
+
+`BRAVE_CORE_REF=...` remains available only for deliberate development/testing overrides. The bootstrap refuses to silently reset unknown local Brave changes when switching refs.
 
 ## Testing
 
@@ -358,6 +409,7 @@ It checks:
 - Python overlay tests.
 - Pure-Java cursor-state tests.
 - Android Java surface compilation against minimal CI stubs to catch syntax/type regressions before a full Chromium build.
+- 32-bit/low-RAM profile wiring and unsafe memory-saving flag absence.
 - Shell syntax.
 - License/header expectations.
 - Required Android TV manifest markers in fixture application tests.
@@ -377,8 +429,9 @@ Do **not** publish a release only because CI is green. Test at least:
 6. Fullscreen HTML5 video and exit from fullscreen.
 7. A USB/Bluetooth mouse and keyboard.
 8. App suspend/resume and process restart.
-9. Memory pressure after multiple tabs.
+9. Memory pressure after multiple tabs, especially on ARM32 / 1–2 GB devices.
 10. A TV with only the minimal Google TV remote buttons.
+11. The correct runtime profile shown in About.
 
 See [`docs/TESTING.md`](docs/TESTING.md).
 
@@ -400,6 +453,6 @@ Do not ship Brave logos, Brave store artwork, or imply that an unofficial build 
 
 ## Security
 
-Browser forks inherit an unusually large attack surface. Keep Brave/Chromium current, do not disable sandboxing, Site Isolation, Safe Browsing/Brave security mechanisms merely to make a TV feature work, and treat renderer/browser-process crashes as release blockers.
+Browser forks inherit an unusually large attack surface. Keep Brave/Chromium current, do not disable sandboxing, Site Isolation, Safe Browsing/Brave security mechanisms merely to make a TV feature work, and treat renderer/browser-process crashes as release blockers. The 32-bit low-memory profile deliberately uses Chromium's supported low-end mode rather than weakening the browser process model.
 
 See [`SECURITY.md`](SECURITY.md).
