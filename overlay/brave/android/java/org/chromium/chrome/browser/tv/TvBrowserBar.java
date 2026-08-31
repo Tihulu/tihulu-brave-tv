@@ -36,7 +36,7 @@ final class TvBrowserBar extends LinearLayout {
     }
 
     private static final int NORMAL_BG = Color.rgb(42, 42, 46);
-    private static final int FOCUSED_BG = Color.rgb(190, 24, 32);
+    private static final int FOCUSED_BG = Color.rgb(218, 32, 40);
     private static final int NORMAL_TEXT = Color.rgb(232, 232, 236);
     private static final int FOCUSED_TEXT = Color.WHITE;
 
@@ -103,9 +103,10 @@ final class TvBrowserBar extends LinearLayout {
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         TextView hint = new TextView(context);
-        hint.setText("D-pad: move focus   ·   OK: select   ·   ↓/Back: close   ·   Hold OK: Cursor/D-pad   ·   Hold ↑: open bar");
-        hint.setTextColor(Color.rgb(190, 190, 196));
-        hint.setTextSize(13);
+        hint.setText(
+                "D-pad: move focus   ·   OK: select   ·   ↓/Back: close   ·   Mode button: Cursor/D-pad   ·   Hold ↑: open bar");
+        hint.setTextColor(Color.rgb(205, 205, 210));
+        hint.setTextSize(14);
         int hPad = dp(context, 14);
         hint.setPadding(hPad, 0, hPad, dp(context, 8));
         shell.addView(
@@ -158,7 +159,7 @@ final class TvBrowserBar extends LinearLayout {
     private static Button actionButton(Context context, String label, Runnable action) {
         Button button = new Button(context);
         button.setText(label);
-        button.setTextSize(17);
+        button.setTextSize(18);
         button.setTextColor(NORMAL_TEXT);
         button.setBackgroundColor(NORMAL_BG);
         button.setFocusable(true);
@@ -166,10 +167,12 @@ final class TvBrowserBar extends LinearLayout {
         button.setPadding(dp(context, 8), 0, dp(context, 8), 0);
         button.setOnFocusChangeListener(
                 (view, focused) -> {
+                    // Avoid scale/animation transforms on low-end TV hardware. A strong color
+                    // change plus explicit chevrons is cheaper to paint and much easier to see
+                    // from a sofa than Android's default focus treatment.
                     button.setBackgroundColor(focused ? FOCUSED_BG : NORMAL_BG);
                     button.setTextColor(focused ? FOCUSED_TEXT : NORMAL_TEXT);
-                    button.setScaleX(focused ? 1.06f : 1.0f);
-                    button.setScaleY(focused ? 1.06f : 1.0f);
+                    button.setText(focused ? "▶ " + label + " ◀" : label);
                 });
         button.setOnClickListener(v -> action.run());
         return button;
@@ -181,9 +184,7 @@ final class TvBrowserBar extends LinearLayout {
     }
 
     private static LinearLayout.LayoutParams buttonLayout(Context context, float weight) {
-        LinearLayout.LayoutParams params =
-                new LinearLayout.LayoutParams(0, dp(context, 64), weight);
-        return params;
+        return new LinearLayout.LayoutParams(0, dp(context, 64), weight);
     }
 
     private static int dp(Context context, int value) {
