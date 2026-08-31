@@ -61,17 +61,25 @@ BASE_PACKAGES=(
 )
 "${SUDO[@]}" apt-get install -y "${BASE_PACKAGES[@]}"
 
+package_has_candidate() {
+  local package="$1"
+  local candidate
+  candidate="$(LC_ALL=C apt-cache policy "$package" | awk '$1 == "Candidate:" {print $2; exit}')"
+  [[ -n "$candidate" && "$candidate" != "(none)" ]]
+}
+
 # python-is-python3 is useful for Brave/Chromium, but some derivatives may not publish it.
-if apt-cache show python-is-python3 >/dev/null 2>&1; then
+if package_has_candidate python-is-python3; then
   "${SUDO[@]}" apt-get install -y python-is-python3
 elif ! command -v python >/dev/null 2>&1; then
   mkdir -p "$TOOLS/bin"
   ln -sfn "$(command -v python3)" "$TOOLS/bin/python"
 fi
 
-# Brave's wiki still mentions python3-distutils for some Ubuntu generations. Newer
-# releases may not publish it, so install it only where the package exists.
-if apt-cache show python3-distutils >/dev/null 2>&1; then
+# Brave's wiki still mentions python3-distutils for some Ubuntu generations. Ubuntu 24.04
+# no longer publishes it as an installable package, even though stale APT metadata can make
+# `apt-cache show` succeed. Only install it when APT reports a real candidate version.
+if package_has_candidate python3-distutils; then
   "${SUDO[@]}" apt-get install -y python3-distutils
 fi
 
