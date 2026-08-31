@@ -109,6 +109,44 @@ version_ge() {
   [[ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n1)" == "$2" ]]
 }
 
+# Build host tools against the distro toolchain only. Conda/venv environments commonly export
+# PATH and linker/compiler variables that can make a locally built Git accidentally link against
+# private libcurl/libiconv copies. That produces binaries which fail to link or later depend on the
+# user's activated environment. Keep HOME/locale, but deliberately drop build/linker overrides.
+run_clean_host_tool() {
+  env \
+    -u CONDA_PREFIX \
+    -u CONDA_DEFAULT_ENV \
+    -u CONDA_EXE \
+    -u _CE_CONDA \
+    -u _CE_M \
+    -u VIRTUAL_ENV \
+    -u PYTHONHOME \
+    -u PYTHONPATH \
+    -u LD_LIBRARY_PATH \
+    -u LIBRARY_PATH \
+    -u CPATH \
+    -u C_INCLUDE_PATH \
+    -u CPLUS_INCLUDE_PATH \
+    -u PKG_CONFIG_PATH \
+    -u PKG_CONFIG_LIBDIR \
+    -u CMAKE_PREFIX_PATH \
+    -u CFLAGS \
+    -u CPPFLAGS \
+    -u CXXFLAGS \
+    -u LDFLAGS \
+    -u LIBS \
+    -u CURL_CONFIG \
+    -u CC \
+    -u CXX \
+    -u AR \
+    -u RANLIB \
+    PATH=/usr/bin:/bin \
+    HOME="$HOME" \
+    LANG="${LANG:-C.UTF-8}" \
+    "$@"
+}
+
 ensure_git() {
   local current="0"
   if command -v git >/dev/null 2>&1; then
@@ -121,25 +159,27 @@ ensure_git() {
   local prefix="$TOOLS/git-$GIT_FALLBACK_VERSION"
   if [[ ! -x "$prefix/bin/git" ]]; then
     echo "System Git $current is older than depot_tools' recommended $GIT_MIN; building Git $GIT_FALLBACK_VERSION locally."
+    echo "Building fallback Git with an isolated distro toolchain (Conda/venv libraries are ignored)."
     local tmp archive
     tmp="$(mktemp -d)"
     archive="$tmp/git.tar.xz"
-    if ! curl -fsSL "https://www.kernel.org/pub/software/scm/git/git-${GIT_FALLBACK_VERSION}.tar.xz" -o "$archive"; then
+    if ! run_clean_host_tool /usr/bin/curl -fsSL "https://www.kernel.org/pub/software/scm/git/git-${GIT_FALLBACK_VERSION}.tar.xz" -o "$archive"; then
       rm -rf "$tmp"
       echo "Failed to download Git $GIT_FALLBACK_VERSION." >&2
       exit 2
     fi
-    if ! echo "$GIT_FALLBACK_SHA256  $archive" | sha256sum --check --strict -; then
+    if ! echo "$GIT_FALLBACK_SHA256  $archive" | /usr/bin/sha256sum --check --strict -; then
       rm -rf "$tmp"
       echo "Git source archive checksum verification failed." >&2
       exit 2
     fi
-    tar -xJf "$archive" -C "$tmp"
+    /usr/bin/tar -xJf "$archive" -C "$tmp"
+    rm -rf "$prefix"
     pushd "$tmp/git-$GIT_FALLBACK_VERSION" >/dev/null
-    make configure
-    ./configure --prefix="$prefix"
-    make -j"$(nproc)" all NO_TCLTK=YesPlease
-    make install NO_TCLTK=YesPlease
+    run_clean_host_tool /usr/bin/make configure
+    run_clean_host_tool ./configure --prefix="$prefix"
+    run_clean_host_tool /usr/bin/make -j"$(nproc)" all NO_TCLTK=YesPlease
+    run_clean_host_tool /usr/bin/make install NO_TCLTK=YesPlease
     popd >/dev/null
     rm -rf "$tmp"
   fi
