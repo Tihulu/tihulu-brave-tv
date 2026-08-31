@@ -306,7 +306,6 @@ final class TvGitHubUpdater {
             String arch = architecture == null ? "" : architecture.toLowerCase(Locale.ROOT);
             String[] suffixes;
             String[] aliases;
-            boolean knownArchitecture = true;
             if (arch.contains("aarch64") || arch.contains("arm64")) {
                 suffixes = new String[] {"-arm64.apk", "_arm64.apk", "-aarch64.apk", "_aarch64.apk"};
                 aliases = new String[] {"arm64-v8a"};
@@ -322,7 +321,6 @@ final class TvGitHubUpdater {
             } else {
                 suffixes = new String[0];
                 aliases = new String[0];
-                knownArchitecture = false;
             }
 
             for (Asset asset : apks) {
@@ -340,7 +338,6 @@ final class TvGitHubUpdater {
             for (Asset asset : apks) {
                 if (asset.name.toLowerCase(Locale.ROOT).contains("universal")) return asset;
             }
-            if (!knownArchitecture && apks.size() == 1) return apks.get(0);
             return null;
         }
     }
