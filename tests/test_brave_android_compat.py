@@ -147,12 +147,16 @@ class BraveAndroidCompatTests(unittest.TestCase):
         with self.assertRaises(compat.CompatError):
             compat.transform_sources_gni(drifted)
 
-    def test_arm32_build_uses_low_memory_feature_cut(self):
+    def test_arm32_build_preserves_brave_android_jni_graph(self):
         builder = (ROOT / "scripts/build-debug.sh").read_text(encoding="utf-8")
         self.assertIn('if [[ "$ARCH" == "arm" ]]', builder)
-        self.assertIn("--gn=enable_brave_rewards:false", builder)
-        self.assertIn("--gn=enable_brave_ads:false", builder)
+        self.assertNotIn("--gn=enable_brave_rewards:false", builder)
+        self.assertNotIn("--gn=enable_brave_ads:false", builder)
+        self.assertIn("preserving Brave Android JNI feature graph", builder)
+        self.assertIn("Chromium low-end mode remains enabled", builder)
         self.assertIn("Shields remains enabled", builder)
+        self.assertIn("BraveRewardsNativeWorker", builder)
+        self.assertIn("BraveAdsNativeHelper", builder)
         self.assertIn("apply_brave_android_compat.py", builder)
 
     def test_compat_patch_is_ephemeral_and_unknown_changes_are_preserved(self):
