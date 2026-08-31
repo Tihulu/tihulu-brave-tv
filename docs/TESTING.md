@@ -37,11 +37,28 @@ Before tagging a release, test at minimum:
 | Cursor | Pointer moves at repeat speed and remains in bounds |
 | Click | Links, buttons and native browser controls receive click |
 | Browser UI | Back, forward, tab switcher and menus still work |
-| Video | HTML5 playback, fullscreen entry/exit, back behavior |
+| Video | HTML5 playback, TV-clean fullscreen entry/exit, remote controls, Back exit |
 | Lifecycle | Home -> resume, screen sleep -> resume, process recreation |
 | Inputs | Remote, USB/Bluetooth keyboard, USB/Bluetooth mouse |
 | Resources | Multi-tab memory pressure does not create crash loops |
 | Security | No sandbox/security flags disabled by TV patches |
+
+### TV-clean HTML5 fullscreen
+
+Run this on YouTube and at least one other HTML5-video site. Test once from D-pad mode and once from Cursor mode:
+
+1. Enter video fullscreen from the page.
+2. Confirm the Tihulu browser bar becomes `GONE` immediately.
+3. If Cursor mode was active before fullscreen, confirm the Tihulu cursor overlay also disappears.
+4. Confirm D-pad and OK now go directly to the Chromium/page player rather than moving the hidden virtual cursor or opening Tihulu controls.
+5. Confirm Android status/navigation bars follow Chromium's fullscreen behavior; Tihulu must not add a second system-UI controller that fights Chromium.
+6. Press Back/remote exit and confirm Chromium leaves HTML fullscreen normally.
+7. Confirm the Tihulu bar reappears after exit.
+8. Confirm the pre-fullscreen navigation mode is preserved. If Cursor mode was active, its pointer should return after exit at the previous logical position.
+9. Repeat enter/exit at least ten times and check for overlay duplication, stuck hidden UI, flicker, focus loss, or a growing memory footprint.
+10. Repeat after Home -> resume and screen sleep -> resume while video is fullscreen.
+
+A fullscreen failure should be captured with `adb logcat`; do not add legacy `SYSTEM_UI_FLAG_*` or a separate `WindowInsetsController` workaround unless Chromium's own fullscreen state is proven not to handle the device.
 
 ## Architecture-specific runtime checks
 
