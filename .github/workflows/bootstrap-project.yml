@@ -31,8 +31,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat .bootstrap/s*.b64 | base64 --decode > /tmp/tihulu-brave-tv.tar.gz
-          sha256sum /tmp/tihulu-brave-tv.tar.gz
+          cat .bootstrap/binpart00 .bootstrap/binpart01 .bootstrap/binpart02 > /tmp/tihulu-brave-tv.tar.gz
+          echo '6ba3440c72f15826246dfbf3d3b34aa802a47c6303b60abd2e59ea2c35d9838d  /tmp/tihulu-brave-tv.tar.gz' | sha256sum --check --strict -
           gzip -t /tmp/tihulu-brave-tv.tar.gz
           tar -tzf /tmp/tihulu-brave-tv.tar.gz >/tmp/tihulu-brave-tv-files.txt
           grep -qx './README.md' /tmp/tihulu-brave-tv-files.txt
