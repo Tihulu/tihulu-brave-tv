@@ -142,6 +142,15 @@ class TvUiAndInstallerTests(unittest.TestCase):
         )
         self.assertIn("Brave runhooks require python3 with pip", bootstrap)
 
+    def test_generated_hook_environment_cannot_expand_comment_commands(self):
+        installer = (ROOT / "scripts/install-host-deps.sh").read_text(encoding="utf-8")
+        self.assertIn("cat <<'EOF_ENV'", installer)
+        self.assertIn(
+            "printf 'export PATH=\"%s/bin:%s/node24/bin:%s/python/bin:$PATH\"\\n'",
+            installer,
+        )
+        self.assertNotIn('cat > "$ENV_FILE" <<EOF_ENV', installer)
+
     def test_optional_apt_packages_require_real_candidate(self):
         installer = (ROOT / "scripts/install-host-deps.sh").read_text(encoding="utf-8")
         self.assertIn("package_has_candidate()", installer)
