@@ -7,6 +7,7 @@ BRAVE_CORE="$WORKSPACE/src/brave"
 COMPAT_FILES=(
   browser/brave_ads/ads_service_factory.h
   browser/brave_ads/ads_service_factory.cc
+  browser/sources.gni
 )
 COMPAT_MARKER="TIHULU_ANDROID_ADS_TOOLTIP_COMPAT"
 COMPAT_APPLIED=0
@@ -56,7 +57,7 @@ cleanup_compat() {
 trap cleanup_compat EXIT INT TERM
 
 # Mark cleanup active before patching, so even a rare partial filesystem write is
-# reverted on failure. The two files were proven clean immediately above.
+# reverted on failure. All compatibility files were proven clean immediately above.
 COMPAT_APPLIED=1
 python3 "$ROOT/scripts/apply_brave_android_compat.py" "$WORKSPACE"
 
