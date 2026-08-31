@@ -1,6 +1,10 @@
 # Tihulu TV Browser
 
-An experimental Google TV / Android TV interaction layer for Brave/Chromium.
+<p align="center">
+  <img src="assets/branding/tihulu_tv_banner.png" alt="Tihulu TV Browser — Based on Brave & Chromium" width="960">
+</p>
+
+A TV-first Google TV / Android TV browser derivative based on Brave and Chromium.
 
 The goal is to keep Brave's browser engine, Shields, tab model and Chromium compatibility while adding a proper 10-foot TV input experience:
 
@@ -8,6 +12,7 @@ The goal is to keep Brave's browser engine, Shields, tab model and Chromium comp
 - **Cursor mode** where the remote D-pad moves a virtual mouse pointer and OK clicks.
 - **TV-first browser bar** with large Back, Forward, Reload, Search/Address, Tabs and TV Controls actions.
 - **TV controls panel** for changing navigation mode, opening the address bar/keyboard and re-centering the pointer.
+- **Tihulu branding** with a dedicated launcher icon, Android TV banner and About panel.
 - **Android TV launcher support** through `LEANBACK_LAUNCHER`.
 - TV-friendly hardware declarations so a touchscreen is not required.
 
@@ -21,6 +26,8 @@ The goal is to keep Brave's browser engine, Shields, tab model and Chromium comp
 ### MVP scope
 
 - [x] Android TV launcher entry
+- [x] Tihulu launcher icon and TV banner
+- [x] Branded About panel
 - [x] Native Chromium spatial navigation switch on TV
 - [x] D-pad / cursor navigation modes
 - [x] Virtual pointer overlay
@@ -304,9 +311,24 @@ The TV Controls dialog includes:
 - Switch between **D-pad** and **Cursor** mode.
 - **Address / Keyboard**, which sends Chrome's `Ctrl+L` shortcut so the omnibox receives focus and Android can display its keyboard.
 - **Tabs**, with previous/next/new/close-current actions.
+- **Check for updates**, which checks packaged APKs on GitHub Releases.
+- **About Tihulu TV Browser**, with the project logo and the **Based on Brave & Chromium** attribution.
 - **Center cursor**.
 
 External USB/Bluetooth keyboards and mice continue to use Android/Chromium's normal input paths.
+
+## Branding
+
+The application-facing brand is **Tihulu TV Browser**. Brave and Chromium are credited as the underlying browser projects, but Brave logos and official Brave artwork are not used as the Tihulu application identity.
+
+The project branding assets are:
+
+- `assets/branding/tihulu_tv_icon.png` — launcher / app icon.
+- `assets/branding/tihulu_tv_banner.png` — Android TV / Google TV banner and README/release artwork.
+
+The Android overlay copies both files into Chromium's packaged drawable resources. The TV launcher activity uses the Tihulu icon and banner directly, and the in-app About panel uses the same icon for consistent branding.
+
+See [`docs/BRANDING.md`](docs/BRANDING.md) for asset and release usage.
 
 ## Updating Brave
 
@@ -374,7 +396,7 @@ See [`docs/LICENSING.md`](docs/LICENSING.md) and [`NOTICE.md`](NOTICE.md).
 
 ## Trademark note
 
-Do not ship Brave logos, Brave store artwork, or imply that an unofficial build is an official Brave product. Use independent branding for distributed builds unless you have the necessary permission.
+Do not ship Brave logos, Brave store artwork, or imply that an unofficial build is an official Brave product. Use independent Tihulu branding for distributed builds unless you have the necessary permission.
 
 ## Security
 
