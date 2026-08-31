@@ -9,6 +9,9 @@ import android.content.Context;
 import android.view.View;
 import android.widget.Toast;
 
+import org.chromium.net.ChromiumNetworkAdapter;
+import org.chromium.net.NetworkTrafficAnnotationTag;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -20,6 +23,25 @@ import java.nio.charset.StandardCharsets;
 final class TvBraveUpstream {
     private static final String LATEST_STABLE_API =
             "https://api.github.com/repos/brave/brave-browser/releases/latest";
+    private static final NetworkTrafficAnnotationTag TRAFFIC_ANNOTATION =
+            NetworkTrafficAnnotationTag.createComplete(
+                    "tihulu_tv_brave_upstream_check",
+                    """
+                    semantics {
+                      sender: "Tihulu TV Browser Brave upstream checker"
+                      description:
+                        "Checks GitHub's public Brave release metadata when the user explicitly "
+                        "requests an upstream version check."
+                      trigger: "User selects Check Brave upstream in Tihulu TV Browser."
+                      data: "No browsing or application data; only standard network metadata."
+                      destination: WEBSITE
+                      user_data { type: NONE }
+                    }
+                    policy {
+                      cookies_allowed: NO
+                      setting: "The request only occurs after explicit user action."
+                      policy_exception_justification: "Not applicable."
+                    }""");
 
     private TvBraveUpstream() {}
 
@@ -81,7 +103,9 @@ final class TvBraveUpstream {
 
     private static String fetchLatestStableTag() throws IOException {
         HttpURLConnection connection =
-                (HttpURLConnection) new URL(LATEST_STABLE_API).openConnection();
+                (HttpURLConnection)
+                        ChromiumNetworkAdapter.openConnection(
+                                new URL(LATEST_STABLE_API), TRAFFIC_ANNOTATION);
         connection.setConnectTimeout(10_000);
         connection.setReadTimeout(15_000);
         connection.setRequestProperty("Accept", "application/vnd.github+json");
