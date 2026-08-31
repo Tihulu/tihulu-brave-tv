@@ -13,10 +13,12 @@ MARKERS = {
         "TvBraveActivity.java",
         "TvCursorState.java",
         "TvGitHubUpdater.java",
+        "TvAboutPanel.java",
     ],
     "src/chrome/android/chrome_java_resources.gni": [
         "TIHULU_TV_BROWSER_RESOURCE_BEGIN",
         "java/res/drawable-nodpi/tihulu_tv_banner.png",
+        "java/res/drawable-nodpi/tihulu_tv_icon.png",
     ],
     "src/brave/android/java/org/chromium/chrome/browser/BraveApplicationImplBase.java": [
         "TIHULU_TV_BROWSER_SPATIAL_NAV_BEGIN",
@@ -28,6 +30,8 @@ MARKERS = {
         "TIHULU_TV_BROWSER_MANIFEST_BEGIN",
         "android.intent.category.LEANBACK_LAUNCHER",
         "android.software.leanback.supports_touch",
+        'android:icon="@drawable/tihulu_tv_icon"',
+        'android:banner="@drawable/tihulu_tv_banner"',
     ],
 }
 
@@ -56,6 +60,7 @@ def main() -> int:
         "TvCursorOverlay.java",
         "TvMouseDispatcher.java",
         "TvControlPanel.java",
+        "TvAboutPanel.java",
         "TvBrowserBar.java",
         "TvTabPanel.java",
         "TvGitHubUpdater.java",
@@ -65,9 +70,15 @@ def main() -> int:
         if not (project / rel).is_file():
             errors.append(f"missing {rel}")
 
-    banner = project / "src/chrome/android/java/res/drawable-nodpi/tihulu_tv_banner.png"
-    if not banner.is_file():
-        errors.append("missing TV banner")
+    for name, label in [
+        ("tihulu_tv_banner.png", "TV banner"),
+        ("tihulu_tv_icon.png", "TV icon"),
+    ]:
+        asset = project / "src/chrome/android/java/res/drawable-nodpi" / name
+        if not asset.is_file():
+            errors.append(f"missing {label}")
+        elif not asset.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"):
+            errors.append(f"invalid PNG for {label}")
 
     if errors:
         for error in errors:
