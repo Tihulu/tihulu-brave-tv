@@ -16,22 +16,22 @@ class TvBarAttachmentTests(unittest.TestCase):
         self.assertNotIn("mRoot.addView(", self.activity)
         self.assertNotIn("addContentView(", self.activity)
 
-    def test_hold_up_opens_dialog_bar_and_long_ok_toggles_navigation(self):
+    def test_hold_up_defers_dialog_creation_until_key_up(self):
         self.assertIn("event.getRepeatCount() > 0", self.activity)
-        self.assertIn("&& !mUpLongPressConsumed", self.activity)
         self.assertIn("mUpLongPressConsumed = true;", self.activity)
-        self.assertIn("showBrowserBar();", self.activity)
-        self.assertIn("&& !mSelectLongPressConsumed", self.activity)
-        self.assertIn("mSelectLongPressConsumed = true;", self.activity)
-        self.assertIn("toggleNavigationMode();", self.activity)
+        self.assertIn("super.dispatchKeyEvent(event);", self.activity)
+        self.assertIn("postShowBrowserBar();", self.activity)
+        self.assertIn("mRoot.post(this::showBrowserBar);", self.activity)
+        self.assertNotIn("mSelectLongPressConsumed", self.activity)
         self.assertNotIn("mRoot.addView(", self.activity)
 
-    def test_long_ok_repeat_is_consumed_until_key_up(self):
-        self.assertIn(
-            "event.getAction() == KeyEvent.ACTION_DOWN\n                && mSelectLongPressConsumed",
-            self.activity,
-        )
-        self.assertIn("mSelectLongPressConsumed = false;", self.activity)
+    def test_navigation_mode_changes_only_from_explicit_bar_control(self):
+        bar = (
+            ROOT
+            / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBrowserBar.java"
+        ).read_text(encoding="utf-8")
+        self.assertIn("callback.toggleNavigationMode();", bar)
+        self.assertIn('return mode == TvNavigationMode.CURSOR ? "Mode: Cursor" : "Mode: D-pad";', bar)
 
     def test_browser_bar_and_control_panel_are_dialog_backed(self):
         bar = (
