@@ -11,10 +11,10 @@ import android.view.MotionEvent;
 import android.view.View;
 
 /** Routes virtual-cursor events through Android's mouse input path. */
-final class TvMouseDispatcher {
+public final class TvMouseDispatcher {
     private TvMouseDispatcher() {}
 
-    static void hover(View root, float x, float y) {
+    public static void hover(View root, float x, float y) {
         long now = SystemClock.uptimeMillis();
         MotionEvent event = MotionEvent.obtain(now, now, MotionEvent.ACTION_HOVER_MOVE, x, y, 0);
         event.setSource(InputDevice.SOURCE_MOUSE);
@@ -25,7 +25,7 @@ final class TvMouseDispatcher {
         }
     }
 
-    static void primaryClick(View root, float x, float y) {
+    public static void primaryClick(View root, float x, float y) {
         long downTime = SystemClock.uptimeMillis();
         dispatchTouch(root, downTime, downTime, MotionEvent.ACTION_DOWN, x, y);
         dispatchTouch(root, downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y);
