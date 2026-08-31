@@ -30,6 +30,7 @@ JAVA_CLASSES = [
     "TvCursorState.java",
     "TvCursorOverlay.java",
     "TvMouseDispatcher.java",
+    "TvMemoryProfile.java",
     "TvControlPanel.java",
     "TvAboutPanel.java",
     "TvBuildInfo.java",
@@ -112,11 +113,12 @@ def main() -> int:
     app_rel = "src/brave/android/java/org/chromium/chrome/browser/BraveApplicationImplBase.java"
     app_text = texts.get(app_rel, "")
     _require_count(app_text, 'appendSwitch("enable-spatial-navigation")', 1, app_rel, errors)
+    _require_count(app_text, "TvMemoryProfile.apply(getApplication())", 1, app_rel, errors)
     browser_guard = "if (SplitCompatApplication.isBrowserProcess()) {"
     spatial_begin = "TIHULU_TV_BROWSER_SPATIAL_NAV_BEGIN"
     if app_text.count(browser_guard) == 1 and app_text.count(spatial_begin) == 1:
         if app_text.index(spatial_begin) < app_text.index(browser_guard):
-            errors.append(f"{app_rel}: spatial-navigation setup is outside the browser-process guard")
+            errors.append(f"{app_rel}: TV startup profile is outside the browser-process guard")
 
     manifest_rel = "src/chrome/android/java/AndroidManifest.xml"
     manifest = texts.get(manifest_rel, "")
@@ -176,6 +178,22 @@ def main() -> int:
         rel = Path("src/brave/android/java/org/chromium/chrome/browser/tv") / name
         if not (project / rel).is_file():
             errors.append(f"missing {rel}")
+
+    memory_profile = java_dir / "TvMemoryProfile.java"
+    if memory_profile.is_file():
+        memory_text = memory_profile.read_text(encoding="utf-8")
+        for token in [
+            'LOW_END_DEVICE_SWITCH = "enable-low-end-device-mode"',
+            "if (!Process.is64Bit()) return true;",
+            "manager.isLowRamDevice()",
+        ]:
+            _require_count(
+                memory_text,
+                token,
+                1,
+                str(memory_profile.relative_to(project)),
+                errors,
+            )
 
     expected_versions = _load_expected_versions(project, errors)
     build_info = java_dir / "TvBuildInfo.java"
