@@ -23,6 +23,7 @@ final class TvControlPanel {
         void centerCursor();
         void showTabs();
         void checkForUpdates();
+        void showAbout();
     }
 
     private TvControlPanel() {}
@@ -36,11 +37,17 @@ final class TvControlPanel {
         column.setBackgroundColor(Color.rgb(32, 32, 32));
 
         TextView title = new TextView(context);
-        title.setText("TV Controls");
+        title.setText("Tihulu TV Browser");
         title.setTextColor(Color.WHITE);
         title.setTextSize(24);
         title.setGravity(Gravity.START);
         column.addView(title, matchWrap());
+
+        TextView subtitle = new TextView(context);
+        subtitle.setText("TV Controls · Based on Brave & Chromium");
+        subtitle.setTextColor(Color.rgb(210, 210, 214));
+        subtitle.setTextSize(16);
+        column.addView(subtitle, matchWrap());
 
         Button mode = new Button(context);
         updateModeText(mode, callback.navigationMode());
@@ -78,6 +85,15 @@ final class TvControlPanel {
                     callback.checkForUpdates();
                 });
         column.addView(update, matchWrap());
+
+        Button about = new Button(context);
+        about.setText("About Tihulu TV Browser");
+        about.setOnClickListener(
+                v -> {
+                    dialog.dismiss();
+                    callback.showAbout();
+                });
+        column.addView(about, matchWrap());
 
         Button center = new Button(context);
         center.setText("Center cursor");
