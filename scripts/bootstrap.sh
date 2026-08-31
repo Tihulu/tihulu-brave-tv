@@ -87,12 +87,14 @@ fi
 cd "$WORKSPACE/src/brave"
 pnpm_run install
 
-# Brave prepends depot_tools/python-bin to child PATHs. Current depot_tools' python3
-# wrapper selects a hermetic CPython without pip, while Brave's DEPS still contains
-# hooks that execute `python3 -m pip`. Finish Brave sync without hooks, then invoke
-# gclient.py directly with our isolated pip-enabled Python and keep that Python first
-# in PATH for hook actions. This avoids modifying Brave or depot_tools source files.
+# Brave's default command environment contains required PYTHONPATH entries such as
+# src/brave/script (for brave_chromium_utils) and also prepends depot_tools/python-bin.
+# We need the former, but Brave's DEPS update_pip hook needs a Python that actually has
+# pip. Load Brave's own environment first, then put our isolated Python back at the very
+# front of PATH before invoking gclient.py. This preserves upstream hook assumptions
+# without modifying Brave or depot_tools source files.
 run_brave_hooks() {
+  local brave_env="$WORKSPACE/src/brave/build/env.sh"
   local depot_tools="$WORKSPACE/src/brave/vendor/depot_tools"
   local gclient_py="$depot_tools/gclient.py"
 
@@ -100,12 +102,31 @@ run_brave_hooks() {
     echo "Missing depot_tools gclient.py at $gclient_py." >&2
     return 1
   fi
+  if [[ ! -f "$brave_env" ]]; then
+    echo "Missing Brave environment script at $brave_env." >&2
+    return 1
+  fi
 
-  echo "Running Brave/Chromium hooks with the isolated pip-enabled Python." >&2
+  echo "Running Brave/Chromium hooks with Brave's PYTHONPATH and the isolated pip-enabled Python." >&2
   (
+    cd "$WORKSPACE/src/brave"
+    # Brave's env.sh is intended to be sourced interactively and references optional
+    # shell variables, so temporarily relax nounset while importing its generated env.
+    set +u
+    # shellcheck disable=SC1090
+    source "$brave_env"
+    set -u
+
+    # Brave env prepends depot_tools/python-bin; restore our pip-enabled interpreter
+    # to position zero while retaining the PYTHONPATH and the rest of Brave's env.
+    export PATH="$ROOT/.tools/python/bin:$PATH"
+    if [[ ":${PYTHONPATH:-}:" != *":$WORKSPACE/src/brave/script:"* ]]; then
+      echo "Brave hook PYTHONPATH is missing $WORKSPACE/src/brave/script." >&2
+      return 1
+    fi
+
     cd "$WORKSPACE"
     export GCLIENT_FILE="$WORKSPACE/.gclient"
-    export PATH="$ROOT/.tools/python/bin:$depot_tools:$depot_tools/python-bin:$PATH"
     "$HOOK_PYTHON" "$gclient_py" runhooks
   )
 }
