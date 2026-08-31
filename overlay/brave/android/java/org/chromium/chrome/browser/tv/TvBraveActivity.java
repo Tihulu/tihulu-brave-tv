@@ -13,7 +13,6 @@ import android.os.SystemClock;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.ViewGroupOverlay;
 
 import org.chromium.chrome.browser.ChromeTabbedActivity;
 import org.chromium.chrome.browser.fullscreen.FullscreenManager;
@@ -55,7 +54,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
 
     private TvNavigationMode mNavigationMode = TvNavigationMode.DPAD;
     private TvCursorState mCursorState;
-    private TvCursorOverlay mCursorOverlay;
+    private TvCursorWindow mCursorWindow;
     private Dialog mBrowserBarDialog;
     private ViewGroup mRoot;
     private KeyEvent mPendingSelectDownEvent;
@@ -99,6 +98,10 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     public void onDestroyInternal() {
         cancelSelectTracking();
         cancelCursorHover();
+        if (mCursorWindow != null) {
+            mCursorWindow.dismiss();
+            mCursorWindow = null;
+        }
         dismissBrowserBar();
         if (mFullscreenObserverRegistered) {
             getFullscreenManager().removeObserver(mFullscreenObserver);
@@ -413,27 +416,29 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     }
 
     private void refreshTvOverlayVisibility() {
-        if (mCursorOverlay != null) {
-            boolean showCursor = mNavigationMode == TvNavigationMode.CURSOR;
-            mCursorOverlay.setVisibility(showCursor ? View.VISIBLE : View.GONE);
-            if (showCursor) mCursorOverlay.invalidate();
+        if (mCursorWindow == null) return;
+        if (mNavigationMode == TvNavigationMode.CURSOR) {
+            mCursorWindow.show();
+        } else {
+            mCursorWindow.hide();
         }
     }
 
     private void ensureCursorInitialized() {
-        if (mRoot == null || mCursorState != null) return;
+        if (mRoot == null) return;
         ensureFullscreenObserverRegistered();
 
         float density = density();
-        mCursorState =
-                new TvCursorState(
-                        mRoot.getWidth(), mRoot.getHeight(), CURSOR_MARGIN_DP * density);
-        mCursorOverlay = new TvCursorOverlay(this);
-        int size = Math.round(CURSOR_SIZE_DP * density);
-        mCursorOverlay.layout(0, 0, size, size);
-        ViewGroupOverlay overlay = mRoot.getOverlay();
-        overlay.add(mCursorOverlay);
-        installCursorLayoutListener();
+        if (mCursorState == null) {
+            mCursorState =
+                    new TvCursorState(
+                            mRoot.getWidth(), mRoot.getHeight(), CURSOR_MARGIN_DP * density);
+            installCursorLayoutListener();
+        }
+        if (mCursorWindow == null) {
+            int size = Math.round(CURSOR_SIZE_DP * density);
+            mCursorWindow = new TvCursorWindow(this, size);
+        }
         refreshTvOverlayVisibility();
         updateCursorOverlay();
     }
@@ -496,12 +501,8 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     }
 
     private void updateCursorOverlay() {
-        if (mCursorState == null || mCursorOverlay == null) return;
-        float halfWidth = mCursorOverlay.getWidth() / 2.0f;
-        float halfHeight = mCursorOverlay.getHeight() / 2.0f;
-        mCursorOverlay.setTranslationX(mCursorState.x() - halfWidth);
-        mCursorOverlay.setTranslationY(mCursorState.y() - halfHeight);
-        mCursorOverlay.invalidate();
+        if (mCursorState == null || mCursorWindow == null) return;
+        mCursorWindow.moveTo(mCursorState.x(), mCursorState.y());
     }
 
     /**
@@ -565,7 +566,10 @@ public final class TvBraveActivity extends ChromeTabbedActivity
 
     /** Converts the visual cursor's DecorView coordinates into active-content local coordinates. */
     private boolean mapCursorToTarget(View target) {
-        if (mRoot == null || mCursorState == null || target.getWidth() <= 0 || target.getHeight() <= 0) {
+        if (mRoot == null
+                || mCursorState == null
+                || target.getWidth() <= 0
+                || target.getHeight() <= 0) {
             return false;
         }
         if (!mPointerMappingValid || mMappedPointerTarget != target) {
