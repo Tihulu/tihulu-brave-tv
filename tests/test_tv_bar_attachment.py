@@ -1,3 +1,4 @@
+import re
 import unittest
 from pathlib import Path
 
@@ -13,8 +14,11 @@ class TvBarAttachmentTests(unittest.TestCase):
         install = self.activity.split("private void installTvBrowserBar()", 1)[1].split(
             "private void focusTvBrowserBar()", 1
         )[0]
-        self.assertNotIn("addContentView(", install)
-        self.assertNotIn("setContentView(", install)
+        code_only = "\n".join(
+            line for line in install.splitlines() if not line.lstrip().startswith("//")
+        )
+        self.assertIsNone(re.search(r"\baddContentView\s*\(", code_only))
+        self.assertIsNone(re.search(r"\bsetContentView\s*\(", code_only))
 
     def test_bar_appends_to_existing_decor_hierarchy(self):
         install = self.activity.split("private void installTvBrowserBar()", 1)[1].split(
