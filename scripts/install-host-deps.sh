@@ -68,6 +68,24 @@ package_has_candidate() {
   [[ -n "$candidate" && "$candidate" != "(none)" ]]
 }
 
+# The lightweight validation suite compiles Java sources before the large Chromium build.
+# Prefer JDK 21 to match CI, but keep a distro-provided default JDK fallback for Debian-family
+# releases that do not publish openjdk-21-jdk-headless.
+if ! command -v javac >/dev/null 2>&1; then
+  if package_has_candidate openjdk-21-jdk-headless; then
+    "${SUDO[@]}" apt-get install -y openjdk-21-jdk-headless
+  elif package_has_candidate default-jdk-headless; then
+    "${SUDO[@]}" apt-get install -y default-jdk-headless
+  else
+    echo "No supported JDK package is available; javac is required for validation." >&2
+    exit 2
+  fi
+fi
+if ! command -v javac >/dev/null 2>&1; then
+  echo "JDK installation completed but javac is still unavailable in PATH." >&2
+  exit 2
+fi
+
 # python-is-python3 is useful for Brave/Chromium, but some derivatives may not publish it.
 if package_has_candidate python-is-python3; then
   "${SUDO[@]}" apt-get install -y python-is-python3
@@ -204,4 +222,5 @@ echo "Git: $(git --version)"
 echo "Node: $(node --version)"
 echo "pnpm: $(pnpm --version)"
 echo "Python: $(python3 --version)"
+echo "Java: $(javac -version 2>&1)"
 echo "ADB: $(adb version | head -n1)"
