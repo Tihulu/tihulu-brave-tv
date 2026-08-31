@@ -79,12 +79,16 @@ public class BraveApplicationImplBase {
         self.assertEqual(sources.count("TIHULU_TV_BROWSER_JAVA_BEGIN"), 1)
         self.assertEqual(sources.count("TvBraveActivity.java"), 1)
         self.assertEqual(sources.count("TvGitHubUpdater.java"), 1)
+        self.assertEqual(sources.count("TvAboutPanel.java"), 1)
         self.assertEqual(resources.count("TIHULU_TV_BROWSER_RESOURCE_BEGIN"), 1)
         self.assertEqual(resources.count("tihulu_tv_banner.png"), 1)
+        self.assertEqual(resources.count("tihulu_tv_icon.png"), 1)
         self.assertEqual(manifest.count("TIHULU_TV_BROWSER_PERMISSIONS_BEGIN"), 1)
         self.assertEqual(manifest.count("android.permission.REQUEST_INSTALL_PACKAGES"), 1)
         self.assertEqual(manifest.count("TIHULU_TV_BROWSER_MANIFEST_BEGIN"), 1)
         self.assertEqual(manifest.count("LEANBACK_LAUNCHER"), 1)
+        self.assertEqual(manifest.count('android:icon="@drawable/tihulu_tv_icon"'), 1)
+        self.assertEqual(manifest.count('android:banner="@drawable/tihulu_tv_banner"'), 1)
         self.assertEqual(app.count("TIHULU_TV_BROWSER_SPATIAL_NAV_BEGIN"), 1)
         self.assertEqual(app.count('appendSwitch("enable-spatial-navigation")'), 1)
         for name in MODULE.JAVA_CLASSES:
@@ -95,14 +99,12 @@ public class BraveApplicationImplBase {
                     / name
                 ).is_file()
             )
-        self.assertTrue(
-            (
-                self.project
-                / "src/chrome/android/java/res/drawable-nodpi/tihulu_tv_banner.png"
-            ).is_file()
-        )
+        for name in ["tihulu_tv_banner.png", "tihulu_tv_icon.png"]:
+            asset = self.project / "src/chrome/android/java/res/drawable-nodpi" / name
+            self.assertTrue(asset.is_file())
+            self.assertTrue(asset.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
 
-    def test_existing_overlay_is_upgraded_for_updater(self):
+    def test_existing_overlay_is_upgraded_for_updater_and_branding(self):
         sources = self.project / "src/brave/android/brave_java_sources.gni"
         sources.write_text(
             'import("x")\n\nbrave_java_sources = [\n'
@@ -110,6 +112,15 @@ public class BraveApplicationImplBase {
             '  "../../brave/android/java/org/chromium/chrome/browser/tv/TvBraveActivity.java",\n'
             '  # TIHULU_TV_BROWSER_JAVA_END\n'
             '  "existing.java",\n]\n',
+            encoding="utf-8",
+        )
+        resources = self.project / "src/chrome/android/chrome_java_resources.gni"
+        resources.write_text(
+            'chrome_java_resources = [\n'
+            '  # TIHULU_TV_BROWSER_RESOURCE_BEGIN\n'
+            '  "java/res/drawable-nodpi/tihulu_tv_banner.png",\n'
+            '  # TIHULU_TV_BROWSER_RESOURCE_END\n'
+            '  "java/res/drawable/existing.xml",\n]\n',
             encoding="utf-8",
         )
         manifest = self.project / "src/chrome/android/java/AndroidManifest.xml"
@@ -133,9 +144,14 @@ public class BraveApplicationImplBase {
         )
         MODULE.apply(self.project)
         upgraded_sources = sources.read_text(encoding="utf-8")
+        upgraded_resources = resources.read_text(encoding="utf-8")
         upgraded_manifest = manifest.read_text(encoding="utf-8")
         self.assertEqual(upgraded_sources.count("TvGitHubUpdater.java"), 1)
+        self.assertEqual(upgraded_sources.count("TvAboutPanel.java"), 1)
+        self.assertEqual(upgraded_resources.count("tihulu_tv_icon.png"), 1)
         self.assertEqual(upgraded_manifest.count("android.permission.REQUEST_INSTALL_PACKAGES"), 1)
+        self.assertEqual(upgraded_manifest.count('android:icon="@drawable/tihulu_tv_icon"'), 1)
+        self.assertEqual(upgraded_manifest.count('android:banner="@drawable/tihulu_tv_banner"'), 1)
 
     def test_missing_anchor_fails_closed(self):
         path = self.project / "src/brave/android/brave_java_sources.gni"
@@ -162,6 +178,8 @@ public class BraveApplicationImplBase {
         self.assertIn('android.hardware.faketouch" android:required="false"', manifest)
         self.assertIn('android.software.leanback.supports_touch', manifest)
         self.assertIn('android.permission.REQUEST_INSTALL_PACKAGES', manifest)
+        self.assertIn('android:icon="@drawable/tihulu_tv_icon"', manifest)
+        self.assertIn('android:banner="@drawable/tihulu_tv_banner"', manifest)
 
 
 if __name__ == "__main__":
