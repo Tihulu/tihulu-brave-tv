@@ -161,8 +161,11 @@ class BraveAndroidCompatTests(unittest.TestCase):
 
     def test_compat_patch_is_ephemeral_and_unknown_changes_are_preserved(self):
         builder = (ROOT / "scripts/build-debug.sh").read_text(encoding="utf-8")
-        self.assertIn('COMPAT_MARKER="TIHULU_ANDROID_ADS_TOOLTIP_COMPAT"', builder)
+        self.assertIn("COMPAT_MARKERS_REGEX=", builder)
+        self.assertIn("TIHULU_ANDROID_ADS_TOOLTIP_COMPAT", builder)
+        self.assertIn("TIHULU_TV_ONBOARDING_CURSOR_COMPAT", builder)
         self.assertIn("browser/sources.gni", builder)
+        self.assertIn("WelcomeOnboardingActivity.java", builder)
         self.assertIn("Refusing to overwrite unknown local Brave change", builder)
         self.assertIn('trap cleanup_compat EXIT INT TERM', builder)
         self.assertIn('git -C "$BRAVE_CORE" restore -- "${COMPAT_FILES[@]}"', builder)
