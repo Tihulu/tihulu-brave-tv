@@ -126,6 +126,22 @@ class TvUiAndInstallerTests(unittest.TestCase):
         self.assertIn("Preserving the existing Chromium checkout", bootstrap)
         self.assertNotIn("rm -rf \"$WORKSPACE\"", bootstrap)
 
+    def test_brave_hooks_use_isolated_python_with_pip(self):
+        installer = (ROOT / "scripts/install-host-deps.sh").read_text(encoding="utf-8")
+        bootstrap = (ROOT / "scripts/bootstrap.sh").read_text(encoding="utf-8")
+        self.assertIn("python3-venv", installer)
+        self.assertIn("ensure_python_env()", installer)
+        self.assertIn('python_env="$TOOLS/python"', installer)
+        self.assertIn('"$host_python" -m venv "$python_env"', installer)
+        self.assertIn("export DEPOT_TOOLS_PYTHON_BYPASS=1", installer)
+        self.assertIn("$TOOLS/python/bin", installer)
+        self.assertIn("python3 -m pip --version", installer)
+        self.assertIn(
+            'export DEPOT_TOOLS_PYTHON_BYPASS="${DEPOT_TOOLS_PYTHON_BYPASS:-1}"',
+            bootstrap,
+        )
+        self.assertIn("Brave runhooks require python3 with pip", bootstrap)
+
     def test_optional_apt_packages_require_real_candidate(self):
         installer = (ROOT / "scripts/install-host-deps.sh").read_text(encoding="utf-8")
         self.assertIn("package_has_candidate()", installer)
