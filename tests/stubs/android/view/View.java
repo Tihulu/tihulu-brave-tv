@@ -18,12 +18,15 @@ public class View {
     protected void onDraw(Canvas c){}
     public int getWidth(){return 100;}
     public int getHeight(){return 100;}
+    public void getLocationInWindow(int[] out){if(out!=null&&out.length>=2){out[0]=0;out[1]=0;}}
     public void setVisibility(int v){}
     public void setTranslationX(float x){}
     public void setTranslationY(float y){}
     public void invalidate(){}
     public void layout(int l,int t,int r,int b){}
     public void post(Runnable r){r.run();}
+    public void postDelayed(Runnable r,long delay){}
+    public void removeCallbacks(Runnable r){}
     public void addOnLayoutChangeListener(OnLayoutChangeListener l){}
     public ViewOverlay getOverlay(){return new ViewOverlay();}
     public boolean dispatchGenericMotionEvent(MotionEvent e){return false;}
