@@ -36,9 +36,13 @@ class TvUiAndInstallerTests(unittest.TestCase):
         self.assertIn("toggleNavigationMode();", bar)
         self.assertIn("Mode button: Cursor/D-pad", bar)
         self.assertIn("keyCode == KeyEvent.KEYCODE_DPAD_DOWN", bar)
-        self.assertNotIn("mSelectLongPressConsumed", activity)
+        self.assertIn("SELECT_LONG_PRESS_MS = 550L", activity)
+        self.assertIn("mRoot.postDelayed(mSelectLongPressRunnable, SELECT_LONG_PRESS_MS);", activity)
+        self.assertIn("mSelectLongPressConsumed", activity)
+        self.assertIn("if (wasLongPress) return true;", activity)
+        self.assertIn("toggleNavigationMode();", activity)
 
-    def test_plain_dpad_path_is_throttled_and_cursor_does_not_emit_hover_storms(self):
+    def test_plain_dpad_path_is_throttled_and_cursor_hover_is_coalesced(self):
         activity = (
             ROOT
             / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBraveActivity.java"
@@ -50,8 +54,34 @@ class TvUiAndInstallerTests(unittest.TestCase):
         self.assertIn("moveCursorForKey(keyCode, event.getRepeatCount());", activity)
         self.assertIn("int boundedRepeat = Math.min(Math.max(repeatCount, 0)", activity)
         self.assertIn("float multiplier = 1.0f + boundedRepeat * CURSOR_REPEAT_ACCELERATION;", activity)
-        self.assertNotIn("TvMouseDispatcher.hover(", activity)
-        self.assertIn("TvMouseDispatcher.primaryClick(", activity)
+        self.assertIn("CURSOR_HOVER_MIN_INTERVAL_MS = 50L", activity)
+        self.assertIn("mCursorHoverPosted", activity)
+        self.assertIn("mRoot.postDelayed(mCursorHoverRunnable, CURSOR_HOVER_MIN_INTERVAL_MS - elapsed);", activity)
+        self.assertIn("TvMouseDispatcher.hover(target, mPointerTargetX, mPointerTargetY);", activity)
+        self.assertIn("TvMouseDispatcher.primaryClick(target, mPointerTargetX, mPointerTargetY);", activity)
+
+    def test_cursor_targets_active_chromium_content_in_local_coordinates(self):
+        activity = (
+            ROOT
+            / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBraveActivity.java"
+        ).read_text(encoding="utf-8")
+        mouse = (
+            ROOT
+            / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvMouseDispatcher.java"
+        ).read_text(encoding="utf-8")
+        self.assertIn("Tab tab = getActivityTab();", activity)
+        self.assertIn("tab.getContentView()", activity)
+        self.assertIn("contentView != null ? contentView : tab.getView()", activity)
+        self.assertIn("getLocationInWindow", activity)
+        self.assertIn("mapCursorToTarget(target)", activity)
+        self.assertNotIn("TvMouseDispatcher.primaryClick(mRoot", activity)
+        self.assertIn("MotionEvent.TOOL_TYPE_MOUSE", mouse)
+        self.assertIn("InputDevice.SOURCE_MOUSE", mouse)
+        self.assertIn("MotionEvent.ACTION_HOVER_MOVE", mouse)
+        self.assertIn("MotionEvent.ACTION_BUTTON_PRESS", mouse)
+        self.assertIn("MotionEvent.ACTION_BUTTON_RELEASE", mouse)
+        self.assertIn("MotionEvent.BUTTON_PRIMARY", mouse)
+        self.assertIn("event.setActionButton(actionButton);", mouse)
 
     def test_tv_mode_lookup_is_cached_out_of_remote_hot_path(self):
         activity = (
@@ -80,6 +110,7 @@ class TvUiAndInstallerTests(unittest.TestCase):
             "ensureCursorInitialized();",
             "TvBrowserBar.show",
             "TvControlPanel.show",
+            "postDelayed(",
         ]:
             self.assertNotIn(forbidden, startup)
         self.assertIn("ensureCursorInitialized();", activity)
