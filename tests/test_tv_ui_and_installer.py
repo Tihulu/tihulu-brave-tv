@@ -5,31 +5,54 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class TvUiAndInstallerTests(unittest.TestCase):
-    def test_tv_browser_bar_has_large_remote_actions(self):
+    def test_tv_browser_bar_has_large_remote_actions_and_focus_feedback(self):
         text = (
             ROOT
             / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBrowserBar.java"
         ).read_text(encoding="utf-8")
-        for label in ["Back", "Forward", "Reload", "Search / Address", "Tabs", "TV Controls"]:
+        for label in ["← Back", "→ Forward", "↻ Reload", "Search / Address", "Tabs", "Menu", "✕ Close"]:
             self.assertIn(label, text)
         self.assertIn("dp(context, 64)", text)
+        self.assertIn("setOnFocusChangeListener", text)
+        self.assertIn("FOCUSED_BG", text)
+        self.assertIn("setScaleX(focused ? 1.06f : 1.0f)", text)
+        self.assertIn("window.setGravity(Gravity.TOP);", text)
+        self.assertIn("window.setDimAmount(0.0f);", text)
 
-    def test_long_ok_focuses_tv_bar(self):
+    def test_remote_can_open_close_bar_and_toggle_navigation_with_six_keys(self):
         text = (
             ROOT
             / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBraveActivity.java"
         ).read_text(encoding="utf-8")
+        self.assertIn("event.getKeyCode() == KeyEvent.KEYCODE_DPAD_UP", text)
         self.assertIn("event.getRepeatCount() > 0", text)
-        self.assertIn("focusTvBrowserBar();", text)
+        self.assertIn("showBrowserBar();", text)
+        self.assertIn("toggleNavigationMode();", text)
+        self.assertIn("Remote: hold ↑ for browser bar", text)
+        self.assertIn("keyCode == KeyEvent.KEYCODE_DPAD_DOWN", (
+            ROOT / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBrowserBar.java"
+        ).read_text(encoding="utf-8"))
 
-    def test_cursor_overlay_is_lazy_for_low_memory_tvs(self):
+    def test_cursor_overlay_and_runtime_ui_are_lazy_for_low_memory_tvs(self):
         activity = (
             ROOT
             / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBraveActivity.java"
         ).read_text(encoding="utf-8")
-        self.assertIn("mRoot.post(this::installTvBrowserBar);", activity)
+        startup = activity.split("public void performPostInflationStartup()", 1)[1].split(
+            "public void onDestroyInternal()", 1
+        )[0]
+        for forbidden in [
+            "addView(",
+            "addOnLayoutChangeListener",
+            "getFullscreenManager()",
+            "ensureCursorInitialized();",
+            "TvBrowserBar.show",
+            "TvControlPanel.show",
+        ]:
+            self.assertNotIn(forbidden, startup)
         self.assertIn("ensureCursorInitialized();", activity)
         self.assertIn("private void ensureCursorInitialized()", activity)
+        self.assertIn("private void installCursorLayoutListener()", activity)
         self.assertNotIn("initializeCursor();", activity)
 
     def test_low_memory_profile_uses_chromium_supported_mode(self):
