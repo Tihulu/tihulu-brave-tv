@@ -85,17 +85,18 @@ BUILD_ARGS=(
   --target_android_output_format=apk
 )
 
-# ARM32 TV boxes have a much smaller process address space and are commonly RAM
-# constrained. Brave Rewards/Brave Ads are not required for Shields/ad blocking or
-# normal web browsing, so omit those subsystems from the 32-bit TV build. This cuts
-# background/service code and also avoids desktop-only Ads tooltip code paths that
-# have no Android implementation. Keep the normal Brave feature set on 64-bit builds.
+# Do not compile out Rewards/Brave Ads with enable_brave_rewards=false or
+# enable_brave_ads=false on the pinned Brave 1.94 Android graph. In this revision,
+# Android Java/JNI registration still lists BraveRewardsNativeWorker and
+# BraveAdsNativeHelper unconditionally. Removing only their native deps leaves
+# generated libchrome JNI registrations pointing at undefined Muxed_* symbols.
+#
+# ARM32 memory savings therefore stay on the supported runtime path instead:
+# Chromium low-end-device mode plus lazy Tihulu overlays. Rewards remains an
+# upstream opt-in feature and Tihulu's TV UI does not invoke it. Shields/ad blocking
+# remains unaffected.
 if [[ "$ARCH" == "arm" ]]; then
-  echo "ARM32 low-memory build: disabling Brave Rewards and Brave Ads; Shields remains enabled." >&2
-  BUILD_ARGS+=(
-    --gn=enable_brave_rewards:false
-    --gn=enable_brave_ads:false
-  )
+  echo "ARM32 low-memory build: preserving Brave Android JNI feature graph; Chromium low-end mode remains enabled and Shields remains enabled." >&2
 fi
 
 "${PNPM[@]}" "${BUILD_ARGS[@]}"
