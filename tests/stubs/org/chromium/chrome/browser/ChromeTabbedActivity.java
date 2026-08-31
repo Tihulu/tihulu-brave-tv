@@ -8,6 +8,7 @@ import android.view.ViewGroup;
 import android.view.Window;
 
 import org.chromium.chrome.browser.fullscreen.FullscreenManager;
+import org.chromium.chrome.browser.tab.Tab;
 
 public class ChromeTabbedActivity extends Context {
     private final FullscreenManager fullscreenManager = new FullscreenManager();
@@ -20,6 +21,10 @@ public class ChromeTabbedActivity extends Context {
 
     public FullscreenManager getFullscreenManager() {
         return fullscreenManager;
+    }
+
+    public Tab getActivityTab() {
+        return null;
     }
 
     public boolean isFinishing() {
