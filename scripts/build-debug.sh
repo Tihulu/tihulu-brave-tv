@@ -3,7 +3,8 @@ set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 INPUT_ARCH="${1:-arm64}"
 WORKSPACE="${BRAVE_TV_WORKSPACE:-$ROOT/.work/brave-browser}"
-BRAVE_CORE="$WORKSPACE/src/brave"
+CHROMIUM_ROOT="$WORKSPACE/src"
+BRAVE_CORE="$CHROMIUM_ROOT/brave"
 COMPAT_FILES=(
   browser/brave_ads/ads_service_factory.h
   browser/brave_ads/ads_service_factory.cc
@@ -11,7 +12,12 @@ COMPAT_FILES=(
   android/java/org/chromium/chrome/browser/firstrun/WelcomeOnboardingActivity.java
 )
 COMPAT_MARKERS_REGEX='TIHULU_ANDROID_ADS_TOOLTIP_COMPAT|TIHULU_TV_ONBOARDING_CURSOR_COMPAT'
+CHROMIUM_COMPAT_FILES=(
+  third_party/blink/renderer/core/html/resources/html.css
+)
+CHROMIUM_COMPAT_MARKERS_REGEX='TIHULU_TV_FOCUS_RING_COMPAT'
 COMPAT_APPLIED=0
+CHROMIUM_COMPAT_APPLIED=0
 
 if [[ -f "$ROOT/.tools/env.sh" ]]; then
   # shellcheck disable=SC1091
@@ -26,8 +32,8 @@ case "$INPUT_ARCH" in
   *) echo "Unsupported architecture: $INPUT_ARCH" >&2; exit 2 ;;
 esac
 
-if [[ ! -d "$BRAVE_CORE/.git" ]]; then
-  echo "Missing initialized Brave checkout at $BRAVE_CORE. Run bootstrap first." >&2
+if [[ ! -d "$BRAVE_CORE/.git" ]] || [[ ! -d "$CHROMIUM_ROOT/.git" ]]; then
+  echo "Missing initialized Brave/Chromium checkout at $WORKSPACE. Run bootstrap first." >&2
   exit 2
 fi
 
@@ -50,9 +56,30 @@ for compat_file in "${COMPAT_FILES[@]}"; do
   fi
 done
 
+# The TV focus ring modifies one tracked Chromium UA stylesheet only while building.
+# Treat an interrupted owned marker as recoverable, but never reset an unrelated local
+# Chromium edit at the same path.
+for compat_file in "${CHROMIUM_COMPAT_FILES[@]}"; do
+  if ! git -C "$CHROMIUM_ROOT" diff --quiet -- "$compat_file" \
+      || ! git -C "$CHROMIUM_ROOT" diff --cached --quiet -- "$compat_file"; then
+    if grep -Eq "$CHROMIUM_COMPAT_MARKERS_REGEX" "$CHROMIUM_ROOT/$compat_file" 2>/dev/null; then
+      echo "Recovering an owned Chromium TV compatibility patch: $compat_file" >&2
+      git -C "$CHROMIUM_ROOT" restore --staged --worktree -- "$compat_file" 2>/dev/null \
+        || git -C "$CHROMIUM_ROOT" restore -- "$compat_file"
+    else
+      echo "Refusing to overwrite unknown local Chromium change: $compat_file" >&2
+      echo "Commit/stash/revert that change before building." >&2
+      exit 2
+    fi
+  fi
+done
+
 cleanup_compat() {
   if (( COMPAT_APPLIED != 0 )); then
     git -C "$BRAVE_CORE" restore -- "${COMPAT_FILES[@]}" 2>/dev/null || true
+  fi
+  if (( CHROMIUM_COMPAT_APPLIED != 0 )); then
+    git -C "$CHROMIUM_ROOT" restore -- "${CHROMIUM_COMPAT_FILES[@]}" 2>/dev/null || true
   fi
 }
 trap cleanup_compat EXIT INT TERM
@@ -67,6 +94,13 @@ python3 "$ROOT/scripts/apply_brave_tv_onboarding_compat.py" "$WORKSPACE"
 # wrapper still runs the full verifier and reapplies automatically when any overlay
 # input, branding asset, or generated engine version changes.
 python3 "$ROOT/scripts/ensure_overlay.py" "$WORKSPACE"
+
+# Chromium 152 renders normal keyboard focus with a subtle 1px UA outline. On a TV that
+# is not reliably visible, and author CSS can suppress it. Apply a build-only UA rule
+# with a strong !important outline. This is renderer-native and adds no JavaScript or
+# per-key IPC to the D-pad hot path.
+CHROMIUM_COMPAT_APPLIED=1
+python3 "$ROOT/scripts/apply_chromium_tv_focus_compat.py" "$WORKSPACE"
 
 cd "$BRAVE_CORE"
 if command -v pnpm >/dev/null 2>&1; then
@@ -107,7 +141,7 @@ fi
 # success. Do not let a caller install an APK while those checks can still fail in the
 # background. The user's shell commonly chains this script with `&& install-apk.sh`,
 # so a static-analysis failure must be visible as a build failure first.
-cd "$WORKSPACE/src"
+cd "$CHROMIUM_ROOT"
 if [[ -f build/android/fast_local_dev_server.py ]]; then
   echo "Waiting for Chromium background static analysis to finish..." >&2
   python3 build/android/fast_local_dev_server.py --wait-for-idle
