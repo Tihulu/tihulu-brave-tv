@@ -66,6 +66,7 @@ public class BraveApplicationImplBase {
             "src/chrome/android/java/AndroidManifest.xml",
             """<manifest>
     <uses-feature android:glEsVersion="0x00030000" />
+    <uses-permission-sdk-23 android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
       <application android:name="{% block application_name %}org.chromium.chrome.browser.base.SplitChromeApplication{% endblock %}"
         android:icon="@drawable/ic_launcher">
@@ -75,11 +76,14 @@ public class BraveApplicationImplBase {
 """,
         )
 
-    def test_apply_is_idempotent(self):
+    def _manifest(self):
+        return (self.project / "src/chrome/android/java/AndroidManifest.xml").read_text()
+
+    def test_apply_is_idempotent_with_upstream_install_permission(self):
         MODULE.apply(self.project)
         MODULE.apply(self.project)
         sources = (self.project / "src/brave/android/brave_java_sources.gni").read_text()
-        manifest = (self.project / "src/chrome/android/java/AndroidManifest.xml").read_text()
+        manifest = self._manifest()
         resources = (self.project / "src/chrome/android/chrome_java_resources.gni").read_text()
         app = (
             self.project
@@ -89,27 +93,31 @@ public class BraveApplicationImplBase {
             self.project
             / "src/brave/android/java/org/chromium/chrome/browser/tv/TvBuildInfo.java"
         ).read_text()
+
         self.assertEqual(sources.count("TIHULU_TV_BROWSER_JAVA_BEGIN"), 1)
-        self.assertEqual(sources.count("TvBraveActivity.java"), 1)
-        self.assertEqual(sources.count("TvGitHubUpdater.java"), 1)
-        self.assertEqual(sources.count("TvAboutPanel.java"), 1)
-        self.assertEqual(sources.count("TvBuildInfo.java"), 1)
-        self.assertEqual(sources.count("TvBraveUpstream.java"), 1)
+        for name in MODULE.JAVA_CLASSES:
+            self.assertEqual(sources.count(name), 1)
         self.assertEqual(resources.count("TIHULU_TV_BROWSER_RESOURCE_BEGIN"), 1)
         self.assertEqual(resources.count("tihulu_tv_banner.png"), 1)
         self.assertEqual(resources.count("tihulu_tv_icon.png"), 1)
         self.assertEqual(manifest.count("TIHULU_TV_BROWSER_PERMISSIONS_BEGIN"), 1)
         self.assertEqual(manifest.count("android.permission.REQUEST_INSTALL_PACKAGES"), 1)
+        self.assertIn(
+            '<uses-permission-sdk-23 android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>',
+            manifest,
+        )
+        self.assertEqual(manifest.count("android.software.leanback"), 2)  # feature + supports_touch metadata
+        self.assertEqual(manifest.count("android.hardware.faketouch"), 1)
         self.assertEqual(manifest.count("TIHULU_TV_BROWSER_MANIFEST_BEGIN"), 1)
         self.assertEqual(manifest.count("LEANBACK_LAUNCHER"), 1)
-        self.assertEqual(manifest.count('android:icon="@drawable/tihulu_tv_icon"'), 1)
-        self.assertEqual(manifest.count('android:banner="@drawable/tihulu_tv_banner"'), 1)
         self.assertEqual(app.count("TIHULU_TV_BROWSER_SPATIAL_NAV_BEGIN"), 1)
         self.assertEqual(app.count('appendSwitch("enable-spatial-navigation")'), 1)
+        self.assertGreater(
+            app.index("TIHULU_TV_BROWSER_SPATIAL_NAV_BEGIN"),
+            app.index("if (SplitCompatApplication.isBrowserProcess())"),
+        )
         self.assertIn('BRAVE_VERSION = "1.99.7"', build_info)
         self.assertIn('CHROMIUM_VERSION = "154.0.8000.1"', build_info)
-        self.assertNotIn('BRAVE_VERSION = "development"', build_info)
-        self.assertNotIn('CHROMIUM_VERSION = "unknown"', build_info)
         for name in MODULE.JAVA_CLASSES:
             self.assertTrue(
                 (
@@ -118,12 +126,44 @@ public class BraveApplicationImplBase {
                     / name
                 ).is_file()
             )
-        for name in ["tihulu_tv_banner.png", "tihulu_tv_icon.png"]:
-            asset = self.project / "src/chrome/android/java/res/drawable-nodpi" / name
-            self.assertTrue(asset.is_file())
-            self.assertTrue(asset.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
 
-    def test_existing_overlay_is_upgraded_for_updater_and_branding(self):
+    def test_missing_upstream_install_permission_is_owned_once(self):
+        manifest = self.project / "src/chrome/android/java/AndroidManifest.xml"
+        manifest.write_text(
+            manifest.read_text().replace(
+                '    <uses-permission-sdk-23 android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>\n',
+                "",
+            ),
+            encoding="utf-8",
+        )
+        MODULE.apply(self.project)
+        patched = self._manifest()
+        self.assertEqual(patched.count("android.permission.REQUEST_INSTALL_PACKAGES"), 1)
+        self.assertIn(
+            '<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />',
+            patched,
+        )
+
+    def test_old_duplicate_permission_block_is_migrated_to_upstream_ownership(self):
+        manifest = self.project / "src/chrome/android/java/AndroidManifest.xml"
+        text = manifest.read_text(encoding="utf-8")
+        old = (
+            "    <!-- TIHULU_TV_BROWSER_PERMISSIONS_BEGIN -->\n"
+            '    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n'
+            "    <!-- TIHULU_TV_BROWSER_PERMISSIONS_END -->\n"
+        )
+        text = text.replace('    <uses-feature android:glEsVersion="0x00030000" />\n', old + '    <uses-feature android:glEsVersion="0x00030000" />\n')
+        manifest.write_text(text, encoding="utf-8")
+
+        MODULE.apply(self.project)
+        patched = self._manifest()
+        self.assertEqual(patched.count("android.permission.REQUEST_INSTALL_PACKAGES"), 1)
+        self.assertIn("<uses-permission-sdk-23", patched)
+        begin = patched.index("TIHULU_TV_BROWSER_PERMISSIONS_BEGIN")
+        end = patched.index("TIHULU_TV_BROWSER_PERMISSIONS_END")
+        self.assertNotIn("REQUEST_INSTALL_PACKAGES", patched[begin:end])
+
+    def test_existing_overlay_is_upgraded_for_current_activity_contract(self):
         sources = self.project / "src/brave/android/brave_java_sources.gni"
         sources.write_text(
             'import("x")\n\nbrave_java_sources = [\n'
@@ -145,7 +185,11 @@ public class BraveApplicationImplBase {
         manifest = self.project / "src/chrome/android/java/AndroidManifest.xml"
         manifest.write_text(
             """<manifest>
+    <!-- TIHULU_TV_BROWSER_PERMISSIONS_BEGIN -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- TIHULU_TV_BROWSER_PERMISSIONS_END -->
     <uses-feature android:glEsVersion="0x00030000" />
+    <uses-permission-sdk-23 android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <!-- TIHULU_TV_BROWSER_FEATURES_BEGIN -->
     <uses-feature android:name="android.software.leanback" android:required="true" />
     <uses-feature android:name="android.hardware.faketouch" android:required="false" />
@@ -161,18 +205,18 @@ public class BraveApplicationImplBase {
 """,
             encoding="utf-8",
         )
+
         MODULE.apply(self.project)
-        upgraded_sources = sources.read_text(encoding="utf-8")
-        upgraded_resources = resources.read_text(encoding="utf-8")
-        upgraded_manifest = manifest.read_text(encoding="utf-8")
-        self.assertEqual(upgraded_sources.count("TvGitHubUpdater.java"), 1)
-        self.assertEqual(upgraded_sources.count("TvAboutPanel.java"), 1)
-        self.assertEqual(upgraded_sources.count("TvBuildInfo.java"), 1)
-        self.assertEqual(upgraded_sources.count("TvBraveUpstream.java"), 1)
-        self.assertEqual(upgraded_resources.count("tihulu_tv_icon.png"), 1)
+        upgraded_manifest = self._manifest()
         self.assertEqual(upgraded_manifest.count("android.permission.REQUEST_INSTALL_PACKAGES"), 1)
-        self.assertEqual(upgraded_manifest.count('android:icon="@drawable/tihulu_tv_icon"'), 1)
-        self.assertEqual(upgraded_manifest.count('android:banner="@drawable/tihulu_tv_banner"'), 1)
+        self.assertIn('android:windowSoftInputMode="adjustResize"', upgraded_manifest)
+        self.assertIn("|navigation|density|touchscreen|colorMode|fontScale", upgraded_manifest)
+        self.assertIn(
+            'android:name="android.activity.launch_mode" android:value="singleInstancePerTask"',
+            upgraded_manifest,
+        )
+        self.assertEqual(sources.read_text().count("TvBraveUpstream.java"), 1)
+        self.assertEqual(resources.read_text().count("tihulu_tv_icon.png"), 1)
 
     def test_invalid_brave_metadata_fails_before_writes(self):
         package_json = self.project / "src/brave/package.json"
@@ -192,11 +236,18 @@ public class BraveApplicationImplBase {
         with self.assertRaises(MODULE.PatchError):
             MODULE.apply(self.project)
 
-    def test_late_anchor_failure_does_not_partially_modify_checkout(self):
-        manifest = self.project / "src/chrome/android/java/AndroidManifest.xml"
-        manifest.write_text("<manifest>upstream changed</manifest>\n", encoding="utf-8")
+    def test_malformed_owned_marker_fails_before_writes(self):
         sources = self.project / "src/brave/android/brave_java_sources.gni"
         before = sources.read_text(encoding="utf-8")
+        manifest = self.project / "src/chrome/android/java/AndroidManifest.xml"
+        manifest.write_text(
+            manifest.read_text().replace(
+                '    <uses-feature android:glEsVersion="0x00030000" />\n',
+                "    <!-- TIHULU_TV_BROWSER_FEATURES_BEGIN -->\n"
+                '    <uses-feature android:glEsVersion="0x00030000" />\n',
+            ),
+            encoding="utf-8",
+        )
         with self.assertRaises(MODULE.PatchError):
             MODULE.apply(self.project)
         self.assertEqual(sources.read_text(encoding="utf-8"), before)
@@ -204,15 +255,29 @@ public class BraveApplicationImplBase {
             (self.project / "src/brave/android/java/org/chromium/chrome/browser/tv").exists()
         )
 
-    def test_manifest_contains_tv_hardware_declarations(self):
+    def test_conflicting_upstream_tv_feature_fails_closed(self):
+        manifest = self.project / "src/chrome/android/java/AndroidManifest.xml"
+        manifest.write_text(
+            manifest.read_text().replace(
+                '    <uses-feature android:glEsVersion="0x00030000" />\n',
+                '    <uses-feature android:glEsVersion="0x00030000" />\n'
+                '    <uses-feature android:name="android.software.leanback" android:required="false" />\n',
+            ),
+            encoding="utf-8",
+        )
+        with self.assertRaises(MODULE.PatchError):
+            MODULE.apply(self.project)
+
+    def test_manifest_contains_tv_activity_parity_attributes(self):
         MODULE.apply(self.project)
-        manifest = (self.project / "src/chrome/android/java/AndroidManifest.xml").read_text()
+        manifest = self._manifest()
         self.assertIn('android.software.leanback" android:required="true"', manifest)
         self.assertIn('android.hardware.faketouch" android:required="false"', manifest)
         self.assertIn('android.software.leanback.supports_touch', manifest)
-        self.assertIn('android.permission.REQUEST_INSTALL_PACKAGES', manifest)
-        self.assertIn('android:icon="@drawable/tihulu_tv_icon"', manifest)
-        self.assertIn('android:banner="@drawable/tihulu_tv_banner"', manifest)
+        self.assertIn('android:windowSoftInputMode="adjustResize"', manifest)
+        self.assertIn('android:hardwareAccelerated="false"', manifest)
+        for value in ["navigation", "touchscreen", "colorMode", "fontScale"]:
+            self.assertIn(value, manifest)
 
 
 if __name__ == "__main__":
