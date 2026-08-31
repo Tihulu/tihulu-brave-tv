@@ -23,13 +23,11 @@ import org.chromium.chrome.browser.tab.Tab;
 /** Chrome/Brave tabbed activity with a TV-first input and browser-control layer. */
 public final class TvBraveActivity extends ChromeTabbedActivity
         implements TvControlPanel.Callback, TvBrowserBar.Callback, TvTabPanel.Callback {
-    private static final float CURSOR_STEP_DP = 24.0f;
-    private static final float CURSOR_REPEAT_ACCELERATION = 0.16f;
-    private static final int CURSOR_MAX_ACCEL_REPEAT = 6;
-    private static final int CURSOR_SIZE_DP = 28;
+    private static final float CURSOR_STEP_DP = 28.0f;
+    private static final int CURSOR_SIZE_DP = 32;
     private static final int CURSOR_MARGIN_DP = 8;
-    private static final int DPAD_REPEAT_DIVISOR = 3;
-    private static final long CURSOR_HOVER_MIN_INTERVAL_MS = 50L;
+    private static final long DPAD_REPEAT_MIN_INTERVAL_MS = 110L;
+    private static final long CURSOR_HOVER_MIN_INTERVAL_MS = 80L;
     private static final long SELECT_LONG_PRESS_MS = 550L;
     private static final int KEY_BACK = 4;
     private static final int KEY_FORWARD = 125;
@@ -69,18 +67,23 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     private boolean mCursorLayoutListenerInstalled;
     private boolean mCursorHoverPosted;
     private boolean mHtmlFullscreen;
+    private boolean mPointerMappingValid;
     private long mLastCursorHoverUptimeMs;
+    private long mLastDpadRepeatDispatchUptimeMs;
+    private int mLastDpadRepeatKeyCode;
+    private float mDensity;
     private int[] mRootLocationInWindow;
     private int[] mPointerTargetLocationInWindow;
+    private View mMappedPointerTarget;
+    private int mPointerTargetOffsetX;
+    private int mPointerTargetOffsetY;
     private float mPointerTargetX;
     private float mPointerTargetY;
 
     /**
      * Chromium owns startup. Keep the TV hook deliberately inert here: no added views, no
      * listeners, no dialogs and no fullscreen-manager access. Low-memory TV boxes can spend
-     * several seconds in Chromium/Brave startup work; adding our UI to that critical path caused
-     * focus-event ANRs on real Android TV hardware. Everything Tihulu-specific is lazy and starts
-     * only after the user deliberately invokes a TV feature.
+     * several seconds in Chromium/Brave startup work; everything Tihulu-specific stays lazy.
      */
     @Override
     public void performPostInflationStartup() {
@@ -106,29 +109,31 @@ public final class TvBraveActivity extends ChromeTabbedActivity
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
-        // Do not call UiModeManager for every remote event. The TV decision is cached once after
-        // Chromium finishes inflating the activity.
         if (!mTvRuntimeEnabled) return super.dispatchKeyEvent(event);
-        if (mHtmlFullscreen) return super.dispatchKeyEvent(event);
 
-        // MENU/INFO/GUIDE is a direct top-bar toggle when the remote provides one. Defer Dialog
-        // creation until the current key dispatch has completed to avoid re-entrant UI work.
-        if (isControlsShortcut(event)) {
+        // In fullscreen video, D-pad mode deliberately remains the player's native remote path
+        // (left/right seek, OK play/pause). Cursor mode is different: keep the virtual pointer
+        // active so arrows move the pointer instead of leaking through as +/-10 second seeks.
+        if (mHtmlFullscreen && mNavigationMode == TvNavigationMode.DPAD) {
+            return super.dispatchKeyEvent(event);
+        }
+
+        // Browser chrome never overlays HTML5 fullscreen. Outside fullscreen, MENU/INFO/GUIDE and
+        // hold-UP can summon the dialog bar without modifying Chromium's root hierarchy.
+        if (!mHtmlFullscreen && isControlsShortcut(event)) {
             if (event.getAction() == KeyEvent.ACTION_UP) postToggleBrowserBar();
             return true;
         }
 
-        // Hold UP to request browser chrome. We only mark the hold while repeat events are arriving;
-        // the actual Dialog is opened after key-up. This keeps expensive UI creation out of the
-        // key-repeat storm. The real ACTION_UP is still forwarded to Chromium so its initial
-        // ACTION_DOWN cannot remain logically stuck.
-        if (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_UP
+        if (!mHtmlFullscreen
+                && event.getKeyCode() == KeyEvent.KEYCODE_DPAD_UP
                 && event.getAction() == KeyEvent.ACTION_DOWN
                 && event.getRepeatCount() > 0) {
             mUpLongPressConsumed = true;
             return true;
         }
-        if (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_UP
+        if (!mHtmlFullscreen
+                && event.getKeyCode() == KeyEvent.KEYCODE_DPAD_UP
                 && event.getAction() == KeyEvent.ACTION_UP
                 && mUpLongPressConsumed) {
             mUpLongPressConsumed = false;
@@ -137,10 +142,6 @@ public final class TvBraveActivity extends ChromeTabbedActivity
             return true;
         }
 
-        // OK is the only guaranteed spare control on a six-key remote. Delay only this key until
-        // release so a long hold can switch D-pad/Cursor exactly once without also activating the
-        // focused page element. Fullscreen bypasses this entire TV layer above, so video players
-        // still receive their native D-pad/OK stream while fullscreen.
         if (isSelectKey(event.getKeyCode()) && handleSelectKeyEvent(event)) return true;
 
         if (mNavigationMode == TvNavigationMode.CURSOR) {
@@ -148,7 +149,9 @@ public final class TvBraveActivity extends ChromeTabbedActivity
             int keyCode = event.getKeyCode();
             if (isDirectionKey(keyCode)) {
                 if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                    if (keyCode == KeyEvent.KEYCODE_DPAD_UP && isCursorAtTopEdge()) {
+                    if (!mHtmlFullscreen
+                            && keyCode == KeyEvent.KEYCODE_DPAD_UP
+                            && isCursorAtTopEdge()) {
                         postShowBrowserBar();
                     } else {
                         moveCursorForKey(keyCode, event.getRepeatCount());
@@ -158,17 +161,18 @@ public final class TvBraveActivity extends ChromeTabbedActivity
             }
         }
 
-        // Chromium's spatial-navigation search can be relatively expensive on large modern pages,
-        // especially in a 32-bit 2 GB process. Let the first D-pad press through immediately, but
-        // thin Android's high-rate repeat stream instead of asking Blink to recompute focus dozens
-        // of times per second. ACTION_UP is never throttled.
-        if (mNavigationMode == TvNavigationMode.DPAD
-                && isDirectionKey(event.getKeyCode())
-                && event.getAction() == KeyEvent.ACTION_DOWN
-                && event.getRepeatCount() > 0
-                && event.getKeyCode() != KeyEvent.KEYCODE_DPAD_UP
-                && event.getRepeatCount() % DPAD_REPEAT_DIVISOR != 0) {
-            return true;
+        // Blink spatial-navigation can be expensive on a 32-bit 2 GB TV box. Use a time budget
+        // instead of repeat-count modulo so different remotes all get a consistent ~9 Hz maximum
+        // focus-search rate while taps still dispatch immediately.
+        if (mNavigationMode == TvNavigationMode.DPAD && isDirectionKey(event.getKeyCode())) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN && shouldThrottleDpadRepeat(event)) {
+                return true;
+            }
+            if (event.getAction() == KeyEvent.ACTION_UP
+                    && event.getKeyCode() == mLastDpadRepeatKeyCode) {
+                mLastDpadRepeatKeyCode = 0;
+                mLastDpadRepeatDispatchUptimeMs = 0L;
+            }
         }
 
         return super.dispatchKeyEvent(event);
@@ -182,13 +186,15 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     @Override
     public void setNavigationMode(TvNavigationMode mode) {
         mNavigationMode = mode == null ? TvNavigationMode.DPAD : mode;
+        mLastDpadRepeatKeyCode = 0;
+        mLastDpadRepeatDispatchUptimeMs = 0L;
         if (mNavigationMode == TvNavigationMode.CURSOR) {
             ensureCursorInitialized();
         } else {
             cancelCursorHover();
         }
         refreshTvOverlayVisibility();
-        if (!mHtmlFullscreen && mNavigationMode == TvNavigationMode.CURSOR) {
+        if (mNavigationMode == TvNavigationMode.CURSOR) {
             updateCursorOverlay();
             scheduleCursorHover();
         }
@@ -207,7 +213,6 @@ public final class TvBraveActivity extends ChromeTabbedActivity
 
     @Override
     public void centerCursor() {
-        if (mHtmlFullscreen) return;
         ensureCursorInitialized();
         if (mCursorState == null) return;
         mCursorState.center();
@@ -329,6 +334,21 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         mSelectLongPressConsumed = false;
     }
 
+    private boolean shouldThrottleDpadRepeat(KeyEvent event) {
+        long now = SystemClock.uptimeMillis();
+        int keyCode = event.getKeyCode();
+        if (event.getRepeatCount() <= 0 || keyCode != mLastDpadRepeatKeyCode) {
+            mLastDpadRepeatKeyCode = keyCode;
+            mLastDpadRepeatDispatchUptimeMs = now;
+            return false;
+        }
+        if (now - mLastDpadRepeatDispatchUptimeMs >= DPAD_REPEAT_MIN_INTERVAL_MS) {
+            mLastDpadRepeatDispatchUptimeMs = now;
+            return false;
+        }
+        return true;
+    }
+
     private void postShowBrowserBar() {
         if (mRoot != null) mRoot.post(this::showBrowserBar);
     }
@@ -370,6 +390,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
 
     private void setTvFullscreenState(boolean fullscreen) {
         mHtmlFullscreen = fullscreen;
+        mPointerMappingValid = false;
         if (fullscreen) {
             mUpLongPressConsumed = false;
             cancelSelectTracking();
@@ -377,11 +398,12 @@ public final class TvBraveActivity extends ChromeTabbedActivity
             dismissBrowserBar();
         }
         refreshTvOverlayVisibility();
+        if (mNavigationMode == TvNavigationMode.CURSOR) scheduleCursorHover();
     }
 
     private void refreshTvOverlayVisibility() {
         if (mCursorOverlay != null) {
-            boolean showCursor = !mHtmlFullscreen && mNavigationMode == TvNavigationMode.CURSOR;
+            boolean showCursor = mNavigationMode == TvNavigationMode.CURSOR;
             mCursorOverlay.setVisibility(showCursor ? View.VISIBLE : View.GONE);
         }
     }
@@ -390,7 +412,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         if (mRoot == null || mCursorState != null) return;
         ensureFullscreenObserverRegistered();
 
-        float density = getResources().getDisplayMetrics().density;
+        float density = density();
         mCursorState =
                 new TvCursorState(
                         mRoot.getWidth(), mRoot.getHeight(), CURSOR_MARGIN_DP * density);
@@ -415,6 +437,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
                     int width = right - left;
                     int height = bottom - top;
                     mCursorState.resize(width, height);
+                    mPointerMappingValid = false;
                     if (Math.abs(width - oldWidth) > width / 3
                             || Math.abs(height - oldHeight) > height / 3) {
                         mCursorState.center();
@@ -426,16 +449,13 @@ public final class TvBraveActivity extends ChromeTabbedActivity
 
     private boolean isCursorAtTopEdge() {
         if (mCursorState == null) return false;
-        float density = getResources().getDisplayMetrics().density;
-        float threshold = (CURSOR_MARGIN_DP + CURSOR_STEP_DP * 0.5f) * density;
+        float threshold = (CURSOR_MARGIN_DP + CURSOR_STEP_DP * 0.5f) * density();
         return mCursorState.y() <= threshold;
     }
 
     private void moveCursorForKey(int keyCode, int repeatCount) {
         if (mCursorState == null) return;
-        int boundedRepeat = Math.min(Math.max(repeatCount, 0), CURSOR_MAX_ACCEL_REPEAT);
-        float multiplier = 1.0f + boundedRepeat * CURSOR_REPEAT_ACCELERATION;
-        float step = CURSOR_STEP_DP * multiplier * getResources().getDisplayMetrics().density;
+        float step = CURSOR_STEP_DP * cursorRepeatMultiplier(repeatCount) * density();
         switch (keyCode) {
             case KeyEvent.KEYCODE_DPAD_LEFT:
                 mCursorState.move(-step, 0);
@@ -456,25 +476,28 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         scheduleCursorHover();
     }
 
+    private static float cursorRepeatMultiplier(int repeatCount) {
+        if (repeatCount >= 8) return 3.0f;
+        if (repeatCount >= 3) return 2.0f;
+        if (repeatCount >= 1) return 1.35f;
+        return 1.0f;
+    }
+
     private void updateCursorOverlay() {
         if (mCursorState == null || mCursorOverlay == null) return;
         float halfWidth = mCursorOverlay.getWidth() / 2.0f;
         float halfHeight = mCursorOverlay.getHeight() / 2.0f;
         mCursorOverlay.setTranslationX(mCursorState.x() - halfWidth);
         mCursorOverlay.setTranslationY(mCursorState.y() - halfHeight);
-        mCursorOverlay.invalidate();
     }
 
     /**
-     * Chromium/Blink needs real mouse hover to reveal HTML5 player controls, but sending one event
-     * for every Android key-repeat caused unnecessary hit-testing and style work. Coalesce to at
-     * most 20 Hz while preserving the latest pointer position.
+     * Chromium/Blink needs real mouse hover for HTML5 controls. On ARM32, cap synthetic hover at
+     * 12.5 Hz; the visual cursor still follows every accepted remote repeat, so movement feels
+     * immediate without forcing Blink to hit-test/style-recalculate for every key event.
      */
     private void scheduleCursorHover() {
-        if (mRoot == null
-                || mCursorState == null
-                || mHtmlFullscreen
-                || mNavigationMode != TvNavigationMode.CURSOR) {
+        if (mRoot == null || mCursorState == null || mNavigationMode != TvNavigationMode.CURSOR) {
             return;
         }
         long now = SystemClock.uptimeMillis();
@@ -491,7 +514,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
 
     private void runScheduledCursorHover() {
         mCursorHoverPosted = false;
-        if (mHtmlFullscreen || mNavigationMode != TvNavigationMode.CURSOR) return;
+        if (mNavigationMode != TvNavigationMode.CURSOR) return;
         dispatchCursorHover();
     }
 
@@ -528,16 +551,22 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         if (mRoot == null || mCursorState == null || target.getWidth() <= 0 || target.getHeight() <= 0) {
             return false;
         }
-        if (mRootLocationInWindow == null) {
-            mRootLocationInWindow = new int[2];
-            mPointerTargetLocationInWindow = new int[2];
+        if (!mPointerMappingValid || mMappedPointerTarget != target) {
+            if (mRootLocationInWindow == null) {
+                mRootLocationInWindow = new int[2];
+                mPointerTargetLocationInWindow = new int[2];
+            }
+            mRoot.getLocationInWindow(mRootLocationInWindow);
+            target.getLocationInWindow(mPointerTargetLocationInWindow);
+            mPointerTargetOffsetX =
+                    mRootLocationInWindow[0] - mPointerTargetLocationInWindow[0];
+            mPointerTargetOffsetY =
+                    mRootLocationInWindow[1] - mPointerTargetLocationInWindow[1];
+            mMappedPointerTarget = target;
+            mPointerMappingValid = true;
         }
-        mRoot.getLocationInWindow(mRootLocationInWindow);
-        target.getLocationInWindow(mPointerTargetLocationInWindow);
-        mPointerTargetX =
-                mCursorState.x() + mRootLocationInWindow[0] - mPointerTargetLocationInWindow[0];
-        mPointerTargetY =
-                mCursorState.y() + mRootLocationInWindow[1] - mPointerTargetLocationInWindow[1];
+        mPointerTargetX = mCursorState.x() + mPointerTargetOffsetX;
+        mPointerTargetY = mCursorState.y() + mPointerTargetOffsetY;
         return mPointerTargetX >= 0
                 && mPointerTargetY >= 0
                 && mPointerTargetX < target.getWidth()
@@ -564,6 +593,11 @@ public final class TvBraveActivity extends ChromeTabbedActivity
 
     private boolean dispatchToBrowser(KeyEvent event) {
         return super.dispatchKeyEvent(event);
+    }
+
+    private float density() {
+        if (mDensity <= 0.0f) mDensity = getResources().getDisplayMetrics().density;
+        return mDensity;
     }
 
     private boolean isTelevision() {
