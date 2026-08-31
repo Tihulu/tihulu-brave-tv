@@ -47,6 +47,14 @@ class TvUiAndInstallerTests(unittest.TestCase):
         self.assertIn("if package_has_candidate python3-distutils; then", installer)
         self.assertNotIn("apt-cache show python3-distutils", installer)
 
+    def test_host_installer_bootstraps_javac(self):
+        installer = (ROOT / "scripts/install-host-deps.sh").read_text(encoding="utf-8")
+        self.assertIn("if ! command -v javac", installer)
+        self.assertIn("package_has_candidate openjdk-21-jdk-headless", installer)
+        self.assertIn("package_has_candidate default-jdk-headless", installer)
+        self.assertIn("JDK installation completed but javac is still unavailable", installer)
+        self.assertIn('echo "Java: $(javac -version 2>&1)"', installer)
+
 
 if __name__ == "__main__":
     unittest.main()
