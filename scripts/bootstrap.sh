@@ -13,6 +13,11 @@ if [[ -f "$ROOT/.tools/env.sh" ]]; then
   source "$ROOT/.tools/env.sh"
 fi
 
+# Current depot_tools ships a top-level python3 wrapper backed by hermetic CPython.
+# Brave still has runhooks that call `python3 -m pip`, so prefer depot_tools' official
+# escape hatch unless the caller deliberately provided another value.
+export DEPOT_TOOLS_PYTHON_BYPASS="${DEPOT_TOOLS_PYTHON_BYPASS:-1}"
+
 case "$INPUT_ARCH" in
   arm64|arm64-v8a) ARCH=arm64 ;;
   arm|armeabi-v7a) ARCH=arm ;;
@@ -24,6 +29,12 @@ esac
 for tool in git python3 node; do
   command -v "$tool" >/dev/null || { echo "Missing required tool: $tool" >&2; exit 2; }
 done
+
+if ! python3 -m pip --version >/dev/null 2>&1; then
+  echo "Brave runhooks require python3 with pip, but the active Python has no pip." >&2
+  echo "Run ./scripts/install-host-deps.sh, then retry; the installer creates an isolated build Python." >&2
+  exit 2
+fi
 
 GIT_VERSION="$(git --version | awk '{print $3}')"
 if [[ "$(printf '%s\n%s\n' 2.41.0 "$GIT_VERSION" | sort -V | head -n1)" != "2.41.0" ]]; then
