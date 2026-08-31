@@ -22,6 +22,29 @@ class TvUiAndInstallerTests(unittest.TestCase):
         self.assertIn("event.getRepeatCount() > 0", text)
         self.assertIn("focusTvBrowserBar();", text)
 
+    def test_github_update_button_downloads_release_apk(self):
+        panel = (
+            ROOT
+            / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvControlPanel.java"
+        ).read_text(encoding="utf-8")
+        activity = (
+            ROOT
+            / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBraveActivity.java"
+        ).read_text(encoding="utf-8")
+        updater = (
+            ROOT
+            / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvGitHubUpdater.java"
+        ).read_text(encoding="utf-8")
+        patcher = (ROOT / "scripts/apply_overlay.py").read_text(encoding="utf-8")
+        self.assertIn('update.setText("Check for updates")', panel)
+        self.assertIn("callback.checkForUpdates();", panel)
+        self.assertIn("TvGitHubUpdater.checkAndInstall(this, mRoot);", activity)
+        self.assertIn("/releases/latest", updater)
+        self.assertIn("browser_download_url", updater)
+        self.assertIn("DownloadManager.Request", updater)
+        self.assertIn("FLAG_GRANT_READ_URI_PERMISSION", updater)
+        self.assertIn("android.permission.REQUEST_INSTALL_PACKAGES", patcher)
+
     def test_one_line_builder_runs_full_dependency_chain(self):
         installer = (ROOT / "scripts/install-host-deps.sh").read_text(encoding="utf-8")
         builder = (ROOT / "scripts/build-apk-one-line.sh").read_text(encoding="utf-8")
