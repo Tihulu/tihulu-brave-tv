@@ -16,6 +16,10 @@ import android.widget.TextView;
 
 /** Small focusable control surface intended for a TV viewing distance. */
 final class TvControlPanel {
+    private static final int NORMAL_BG = Color.rgb(48, 48, 52);
+    private static final int FOCUSED_BG = Color.rgb(218, 32, 40);
+    private static final int NORMAL_TEXT = Color.rgb(236, 236, 240);
+
     interface Callback {
         TvNavigationMode navigationMode();
         void setNavigationMode(TvNavigationMode mode);
@@ -49,7 +53,7 @@ final class TvControlPanel {
         subtitle.setTextSize(16);
         column.addView(subtitle, matchWrap());
 
-        Button mode = new Button(context);
+        Button mode = tvButton(context);
         updateModeText(mode, callback.navigationMode());
         mode.setOnClickListener(
                 v -> {
@@ -59,7 +63,7 @@ final class TvControlPanel {
                 });
         column.addView(mode, matchWrap());
 
-        Button keyboard = new Button(context);
+        Button keyboard = tvButton(context);
         keyboard.setText("Search / Address / Keyboard");
         keyboard.setOnClickListener(
                 v -> {
@@ -68,7 +72,7 @@ final class TvControlPanel {
                 });
         column.addView(keyboard, matchWrap());
 
-        Button tabs = new Button(context);
+        Button tabs = tvButton(context);
         tabs.setText("Tabs");
         tabs.setOnClickListener(
                 v -> {
@@ -77,7 +81,7 @@ final class TvControlPanel {
                 });
         column.addView(tabs, matchWrap());
 
-        Button update = new Button(context);
+        Button update = tvButton(context);
         update.setText("Check for Tihulu updates");
         update.setOnClickListener(
                 v -> {
@@ -86,7 +90,7 @@ final class TvControlPanel {
                 });
         column.addView(update, matchWrap());
 
-        Button about = new Button(context);
+        Button about = tvButton(context);
         about.setText("About Tihulu TV Browser");
         about.setOnClickListener(
                 v -> {
@@ -95,12 +99,12 @@ final class TvControlPanel {
                 });
         column.addView(about, matchWrap());
 
-        Button center = new Button(context);
+        Button center = tvButton(context);
         center.setText("Center cursor");
         center.setOnClickListener(v -> callback.centerCursor());
         column.addView(center, matchWrap());
 
-        Button close = new Button(context);
+        Button close = tvButton(context);
         close.setText("Close");
         close.setOnClickListener(v -> dialog.dismiss());
         column.addView(close, matchWrap());
@@ -118,6 +122,20 @@ final class TvControlPanel {
                     mode.requestFocus();
                 });
         dialog.show();
+    }
+
+    private static Button tvButton(Context context) {
+        Button button = new Button(context);
+        button.setTextSize(18);
+        button.setTextColor(NORMAL_TEXT);
+        button.setBackgroundColor(NORMAL_BG);
+        button.setFocusable(true);
+        button.setOnFocusChangeListener(
+                (view, focused) -> {
+                    button.setBackgroundColor(focused ? FOCUSED_BG : NORMAL_BG);
+                    button.setTextColor(focused ? Color.WHITE : NORMAL_TEXT);
+                });
+        return button;
     }
 
     private static void updateModeText(Button button, TvNavigationMode mode) {
