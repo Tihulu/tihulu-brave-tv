@@ -1,0 +1,1 @@
+package org.chromium.base; public final class CommandLine { private static final CommandLine INSTANCE=new CommandLine(); private CommandLine(){} public static CommandLine getInstance(){return INSTANCE;} public void appendSwitch(String value){} }
