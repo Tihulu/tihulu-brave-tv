@@ -27,9 +27,10 @@ class TvFullscreenTests(unittest.TestCase):
         self.assertIn("dismissBrowserBar();", state)
         self.assertIn("mPointerMappingValid = false;", state)
         self.assertIn("scheduleCursorHover();", state)
-        self.assertIn("boolean showCursor = mNavigationMode == TvNavigationMode.CURSOR;", visibility)
+        self.assertIn("mNavigationMode == TvNavigationMode.CURSOR", visibility)
+        self.assertIn("mCursorWindow.show();", visibility)
+        self.assertIn("mCursorWindow.hide();", visibility)
         self.assertNotIn("!mHtmlFullscreen && mNavigationMode", visibility)
-        self.assertIn("mCursorOverlay.setVisibility(showCursor ? View.VISIBLE : View.GONE);", visibility)
 
     def test_fullscreen_dpad_directions_are_native_but_select_can_toggle_cursor(self):
         dispatch = self.activity.split("public boolean dispatchKeyEvent(KeyEvent event)", 1)[1].split(
