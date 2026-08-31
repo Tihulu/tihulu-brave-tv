@@ -3,13 +3,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ACTIVITY = ROOT / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBraveActivity.java"
-WINDOW = ROOT / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvCursorWindow.java"
+CURSOR_SOURCE = ROOT / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvCursorOverlay.java"
 
 
 class TvCursorWindowTests(unittest.TestCase):
     def setUp(self):
         self.activity = ACTIVITY.read_text(encoding="utf-8")
-        self.window = WINDOW.read_text(encoding="utf-8")
+        self.window = CURSOR_SOURCE.read_text(encoding="utf-8")
 
     def test_cursor_is_not_drawn_in_activity_view_overlay(self):
         self.assertNotIn("ViewGroupOverlay", self.activity)
@@ -19,6 +19,7 @@ class TvCursorWindowTests(unittest.TestCase):
         self.assertIn("mCursorWindow.moveTo(mCursorState.x(), mCursorState.y());", self.activity)
 
     def test_cursor_window_is_passive_transparent_and_above_web_surface(self):
+        self.assertIn("final class TvCursorWindow", self.window)
         self.assertIn("new Dialog(context)", self.window)
         self.assertIn("FLAG_NOT_FOCUSABLE", self.window)
         self.assertIn("FLAG_NOT_TOUCHABLE", self.window)
