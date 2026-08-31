@@ -60,5 +60,21 @@ if [[ -n "$DEVICE_ABILIST" && ",${DEVICE_ABILIST}," != *",${REQUIRED_DEVICE_ABI}
   exit 2
 fi
 
+# Current Chromium defines the normal Android minimum SDK in config.gni. Read the synced source
+# rather than hard-coding it so a future Brave/Chromium baseline raises the guard automatically.
+ANDROID_CONFIG="$WORKSPACE/src/build/config/android/config.gni"
+MIN_SDK=""
+if [[ -f "$ANDROID_CONFIG" ]]; then
+  MIN_SDK="$(awk '/^[[:space:]]*default_min_sdk_version = [0-9]+[[:space:]]*$/ {print $3; exit}' "$ANDROID_CONFIG")"
+fi
+DEVICE_SDK="$("${ADB[@]}" shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\r')"
+if [[ "$MIN_SDK" =~ ^[0-9]+$ && "$DEVICE_SDK" =~ ^[0-9]+$ ]] && (( DEVICE_SDK < MIN_SDK )); then
+  DEVICE_RELEASE="$("${ADB[@]}" shell getprop ro.build.version.release 2>/dev/null | tr -d '\r')"
+  echo "Connected Android device is too old for this Chromium baseline." >&2
+  echo "Device: Android ${DEVICE_RELEASE:-unknown}, API $DEVICE_SDK; required API >= $MIN_SDK." >&2
+  echo "Refusing to attempt an install that Android would reject with INSTALL_FAILED_OLDER_SDK." >&2
+  exit 2
+fi
+
 echo "Installing $APK"
 "${ADB[@]}" install -r "$APK"
