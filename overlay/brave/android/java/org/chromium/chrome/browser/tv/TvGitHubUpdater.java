@@ -23,18 +23,26 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Downloads the newest packaged TV APK from GitHub Releases and hands it to Android. */
 final class TvGitHubUpdater {
     private static final String LATEST_RELEASE_API =
             "https://api.github.com/repos/Tihulu/tihulu-brave-tv/releases/latest";
+    private static final String TRUSTED_RELEASE_PREFIX =
+            "https://github.com/Tihulu/tihulu-brave-tv/releases/download/";
     private static final String APK_MIME = "application/vnd.android.package-archive";
     private static final long POLL_TIMEOUT_MS = 2L * 60L * 60L * 1000L;
+    private static final AtomicBoolean UPDATE_RUNNING = new AtomicBoolean(false);
 
     private TvGitHubUpdater() {}
 
     static void checkAndInstall(Context context, View uiAnchor) {
         if (context == null || uiAnchor == null) return;
+        if (!UPDATE_RUNNING.compareAndSet(false, true)) {
+            toast(context, uiAnchor, "An update check or download is already running.");
+            return;
+        }
         toast(context, uiAnchor, "Checking GitHub for updates...");
         Thread worker =
                 new Thread(
@@ -70,6 +78,8 @@ final class TvGitHubUpdater {
                                 String fileName =
                                         "Tihulu-TV-Browser-"
                                                 + tag.replaceAll("[^A-Za-z0-9._-]", "_")
+                                                + "-"
+                                                + System.currentTimeMillis()
                                                 + ".apk";
                                 DownloadManager.Request request =
                                         new DownloadManager.Request(Uri.parse(apk.url))
@@ -96,6 +106,8 @@ final class TvGitHubUpdater {
                                         context,
                                         uiAnchor,
                                         "Update failed: " + safeMessage(error));
+                            } finally {
+                                UPDATE_RUNNING.set(false);
                             }
                         },
                         "tihulu-tv-updater");
@@ -108,6 +120,7 @@ final class TvGitHubUpdater {
         connection.setConnectTimeout(10_000);
         connection.setReadTimeout(15_000);
         connection.setRequestProperty("Accept", "application/vnd.github+json");
+        connection.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
         connection.setRequestProperty("User-Agent", "Tihulu-TV-Browser-Updater");
         connection.setInstanceFollowRedirects(true);
 
@@ -145,8 +158,7 @@ final class TvGitHubUpdater {
             String name = nameIndex < 0 ? "" : stringValueAtKeyIndex(json, nameIndex);
             String url = stringValueAtKeyIndex(json, urlIndex);
             if (name.toLowerCase(Locale.ROOT).endsWith(".apk")
-                    && (url.startsWith("https://github.com/")
-                            || url.startsWith("https://objects.githubusercontent.com/"))) {
+                    && url.startsWith(TRUSTED_RELEASE_PREFIX)) {
                 apks.add(new Asset(name, url));
             }
             searchFrom = urlIndex + urlKey.length();
@@ -292,29 +304,43 @@ final class TvGitHubUpdater {
 
         Asset bestApkFor(String architecture) {
             String arch = architecture == null ? "" : architecture.toLowerCase(Locale.ROOT);
+            String[] suffixes;
             String[] aliases;
+            boolean knownArchitecture = true;
             if (arch.contains("aarch64") || arch.contains("arm64")) {
-                aliases = new String[] {"arm64", "aarch64"};
+                suffixes = new String[] {"-arm64.apk", "_arm64.apk", "-aarch64.apk", "_aarch64.apk"};
+                aliases = new String[] {"arm64-v8a"};
             } else if (arch.startsWith("arm")) {
-                aliases = new String[] {"armeabi", "armv7", "arm32"};
-            } else if (arch.contains("x86_64") || arch.contains("amd64")) {
-                aliases = new String[] {"x86_64", "x64"};
-            } else if (arch.contains("x86")) {
-                aliases = new String[] {"x86"};
+                suffixes = new String[] {"-arm.apk", "_arm.apk", "-arm32.apk", "_arm32.apk"};
+                aliases = new String[] {"armeabi", "armv7"};
+            } else if (arch.contains("x86_64") || arch.contains("amd64") || arch.contains("x64")) {
+                suffixes = new String[] {"-x64.apk", "_x64.apk", "-x86_64.apk", "_x86_64.apk"};
+                aliases = new String[] {"x86-64"};
+            } else if (arch.equals("x86") || arch.matches("i[3-6]86")) {
+                suffixes = new String[] {"-x86.apk", "_x86.apk"};
+                aliases = new String[] {"x86-32"};
             } else {
+                suffixes = new String[0];
                 aliases = new String[0];
+                knownArchitecture = false;
             }
 
+            for (Asset asset : apks) {
+                String name = asset.name.toLowerCase(Locale.ROOT);
+                for (String suffix : suffixes) {
+                    if (name.endsWith(suffix)) return asset;
+                }
+            }
             for (Asset asset : apks) {
                 String name = asset.name.toLowerCase(Locale.ROOT);
                 for (String alias : aliases) {
                     if (name.contains(alias)) return asset;
                 }
             }
-            if (apks.size() == 1) return apks.get(0);
             for (Asset asset : apks) {
                 if (asset.name.toLowerCase(Locale.ROOT).contains("universal")) return asset;
             }
+            if (!knownArchitecture && apks.size() == 1) return apks.get(0);
             return null;
         }
     }
