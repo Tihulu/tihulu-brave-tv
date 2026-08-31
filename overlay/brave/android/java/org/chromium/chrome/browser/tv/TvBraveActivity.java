@@ -49,39 +49,26 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     private TvNavigationMode mNavigationMode = TvNavigationMode.DPAD;
     private TvCursorState mCursorState;
     private TvCursorOverlay mCursorOverlay;
-    private TvBrowserBar mTvBrowserBar;
     private ViewGroup mRoot;
     private boolean mSelectLongPressConsumed;
     private boolean mTvUiInitialized;
     private boolean mFullscreenObserverRegistered;
+    private boolean mCursorLayoutListenerInstalled;
     private boolean mHtmlFullscreen;
 
+    /**
+     * Chromium owns startup. Keep the TV hook deliberately inert here: no added views, no
+     * listeners, no dialogs and no fullscreen-manager access. Low-memory TV boxes can spend
+     * several seconds in Chromium/Brave startup work; adding our UI to that critical path caused
+     * focus-event ANRs on real Android TV hardware. Everything Tihulu-specific is lazy and starts
+     * only after the user presses a remote key.
+     */
     @Override
     public void performPostInflationStartup() {
         super.performPostInflationStartup();
         if (mTvUiInitialized || isFinishing() || !isTelevision()) return;
         mTvUiInitialized = true;
-
         mRoot = (ViewGroup) getWindow().getDecorView();
-        registerFullscreenObserver();
-
-        // Cursor objects are intentionally lazy. Most low-memory TV boxes can stay in D-pad mode
-        // without allocating another overlay view/state pair for the lifetime of the browser.
-        mRoot.post(this::installTvBrowserBar);
-        mRoot.addOnLayoutChangeListener(
-                (view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
-                    if (mCursorState == null) return;
-                    int oldWidth = oldRight - oldLeft;
-                    int oldHeight = oldBottom - oldTop;
-                    int width = right - left;
-                    int height = bottom - top;
-                    mCursorState.resize(width, height);
-                    if (Math.abs(width - oldWidth) > width / 3
-                            || Math.abs(height - oldHeight) > height / 3) {
-                        mCursorState.center();
-                    }
-                    updateCursorOverlay();
-                });
     }
 
     @Override
@@ -96,6 +83,9 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         if (!isTelevision()) return super.dispatchKeyEvent(event);
+
+        // Register only after a real remote interaction, never during Chromium startup.
+        ensureFullscreenObserverRegistered();
         if (mHtmlFullscreen) return super.dispatchKeyEvent(event);
 
         if (isControlsShortcut(event)) {
@@ -103,11 +93,13 @@ public final class TvBraveActivity extends ChromeTabbedActivity
             return true;
         }
 
+        // Long OK is the guaranteed remote-only escape hatch. It opens a Dialog-backed control
+        // surface and never attaches a persistent view to Chromium's DecorView hierarchy.
         if (isSelectKey(event.getKeyCode())
                 && event.getAction() == KeyEvent.ACTION_DOWN
                 && event.getRepeatCount() > 0) {
             mSelectLongPressConsumed = true;
-            focusTvBrowserBar();
+            showTvControls();
             return true;
         }
         if (isSelectKey(event.getKeyCode())
@@ -146,7 +138,6 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         if (mNavigationMode == TvNavigationMode.CURSOR) ensureCursorInitialized();
         refreshTvOverlayVisibility();
         if (!mHtmlFullscreen && mNavigationMode == TvNavigationMode.CURSOR) updateCursorOverlay();
-        if (mTvBrowserBar != null) mTvBrowserBar.refreshMode(mNavigationMode);
     }
 
     @Override
@@ -224,12 +215,12 @@ public final class TvBraveActivity extends ChromeTabbedActivity
 
     @Override
     public void showTvControls() {
-        if (mHtmlFullscreen) return;
+        if (mHtmlFullscreen || isFinishing()) return;
         TvControlPanel.show(this, this);
     }
 
-    private void registerFullscreenObserver() {
-        if (mFullscreenObserverRegistered) return;
+    private void ensureFullscreenObserverRegistered() {
+        if (mFullscreenObserverRegistered || !mTvUiInitialized || isFinishing()) return;
         FullscreenManager fullscreenManager = getFullscreenManager();
         fullscreenManager.addObserver(mFullscreenObserver);
         mFullscreenObserverRegistered = true;
@@ -243,50 +234,47 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     }
 
     private void refreshTvOverlayVisibility() {
-        if (mTvBrowserBar != null) {
-            mTvBrowserBar.setVisibility(mHtmlFullscreen ? View.GONE : View.VISIBLE);
-        }
         if (mCursorOverlay != null) {
             boolean showCursor = !mHtmlFullscreen && mNavigationMode == TvNavigationMode.CURSOR;
             mCursorOverlay.setVisibility(showCursor ? View.VISIBLE : View.GONE);
         }
     }
 
-    private void installTvBrowserBar() {
-        if (mTvBrowserBar != null || mRoot == null) return;
-
-        // Do not call Activity.addContentView() here. On Chromium 152 the AppCompat/Chrome
-        // window delegate can route that call through setContentView(), detaching Chrome's
-        // existing toolbar hierarchy and triggering ToolbarPhone assertions during startup.
-        // DecorView is already a stable ViewGroup at this lifecycle point, so append the TV bar
-        // as a normal child without replacing or detaching any Chromium-owned view.
-        TvBrowserBar bar = new TvBrowserBar(this, this);
-        mRoot.addView(
-                bar,
-                new ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        mTvBrowserBar = bar;
-        mTvBrowserBar.refreshMode(mNavigationMode);
-        refreshTvOverlayVisibility();
-    }
-
-    private void focusTvBrowserBar() {
-        if (mHtmlFullscreen) return;
-        if (mTvBrowserBar == null) installTvBrowserBar();
-        if (mTvBrowserBar != null) mTvBrowserBar.focusPrimaryAction();
-    }
-
     private void ensureCursorInitialized() {
         if (mRoot == null || mCursorState != null) return;
+        ensureFullscreenObserverRegistered();
+
         float density = getResources().getDisplayMetrics().density;
-        mCursorState = new TvCursorState(mRoot.getWidth(), mRoot.getHeight(), CURSOR_MARGIN_DP * density);
+        mCursorState =
+                new TvCursorState(
+                        mRoot.getWidth(), mRoot.getHeight(), CURSOR_MARGIN_DP * density);
         mCursorOverlay = new TvCursorOverlay(this);
         int size = Math.round(CURSOR_SIZE_DP * density);
         mCursorOverlay.layout(0, 0, size, size);
         ViewGroupOverlay overlay = mRoot.getOverlay();
         overlay.add(mCursorOverlay);
+        installCursorLayoutListener();
         refreshTvOverlayVisibility();
         updateCursorOverlay();
+    }
+
+    private void installCursorLayoutListener() {
+        if (mRoot == null || mCursorLayoutListenerInstalled) return;
+        mCursorLayoutListenerInstalled = true;
+        mRoot.addOnLayoutChangeListener(
+                (view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+                    if (mCursorState == null) return;
+                    int oldWidth = oldRight - oldLeft;
+                    int oldHeight = oldBottom - oldTop;
+                    int width = right - left;
+                    int height = bottom - top;
+                    mCursorState.resize(width, height);
+                    if (Math.abs(width - oldWidth) > width / 3
+                            || Math.abs(height - oldHeight) > height / 3) {
+                        mCursorState.center();
+                    }
+                    updateCursorOverlay();
+                });
     }
 
     private void moveCursorForKey(int keyCode) {
@@ -326,7 +314,8 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         mRoot.post(
                 () -> {
                     long now = SystemClock.uptimeMillis();
-                    dispatchToBrowser(new KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0, metaState));
+                    dispatchToBrowser(
+                            new KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0, metaState));
                     dispatchToBrowser(
                             new KeyEvent(
                                     now,
@@ -344,7 +333,8 @@ public final class TvBraveActivity extends ChromeTabbedActivity
 
     private boolean isTelevision() {
         UiModeManager manager = (UiModeManager) getSystemService(Context.UI_MODE_SERVICE);
-        return manager != null && manager.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION;
+        return manager != null
+                && manager.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION;
     }
 
     private static boolean isDirectionKey(int keyCode) {
@@ -368,6 +358,8 @@ public final class TvBraveActivity extends ChromeTabbedActivity
                 || keyCode == KeyEvent.KEYCODE_GUIDE) {
             return true;
         }
-        return keyCode == KeyEvent.KEYCODE_M && event.isCtrlPressed() && event.isShiftPressed();
+        return keyCode == KeyEvent.KEYCODE_M
+                && event.isCtrlPressed()
+                && event.isShiftPressed();
     }
 }
