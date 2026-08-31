@@ -39,14 +39,14 @@ public class WelcomeOnboardingActivity extends FirstRunActivityBase
 
 
 class TvOnboardingCompatTests(unittest.TestCase):
-    def test_tv_onboarding_gets_visible_dpad_cursor(self):
+    def test_tv_onboarding_gets_visible_dpad_cursor_without_hover_storms(self):
         fixed, applied = compat.transform(UPSTREAM)
         self.assertTrue(applied)
         self.assertIn("TIHULU_TV_ONBOARDING_CURSOR_COMPAT_BEGIN", fixed)
         self.assertIn("public boolean dispatchKeyEvent(KeyEvent event)", fixed)
         self.assertIn("KEYCODE_DPAD_LEFT", fixed)
         self.assertIn("KEYCODE_DPAD_CENTER", fixed)
-        self.assertIn("TvMouseDispatcher.hover", fixed)
+        self.assertNotIn("TvMouseDispatcher.hover", fixed)
         self.assertIn("TvMouseDispatcher.primaryClick", fixed)
         self.assertIn("installTihuluTvCursor();", fixed)
         self.assertIn("UI_MODE_TYPE_TELEVISION", fixed)
