@@ -145,6 +145,11 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         TvGitHubUpdater.checkAndInstall(this, mRoot);
     }
 
+    @Override
+    public void showAbout() {
+        TvAboutPanel.show(this, this::checkForUpdates);
+    }
+
     public void goBack() {
         dispatchShortcut(KEY_BACK, 0);
     }
@@ -276,10 +281,6 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         UiModeManager manager = (UiModeManager) getSystemService(Context.UI_MODE_SERVICE);
         return manager != null
                 && manager.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION;
-    }
-
-    private static int dp(Context context, int value) {
-        return Math.round(value * context.getResources().getDisplayMetrics().density);
     }
 
     private static boolean isDirectionKey(int keyCode) {
