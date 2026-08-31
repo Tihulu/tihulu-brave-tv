@@ -48,6 +48,7 @@ class TvUiAndInstallerTests(unittest.TestCase):
         )
         self.assertIn('android:icon="@drawable/tihulu_tv_icon"', patcher)
         self.assertIn('android:banner="@drawable/tihulu_tv_banner"', patcher)
+        self.assertIn('android:windowSoftInputMode="adjustResize"', patcher)
         self.assertTrue((ROOT / "assets/branding/tihulu_tv_icon.png").is_file())
         self.assertTrue((ROOT / "assets/branding/tihulu_tv_banner.png").is_file())
 
@@ -90,7 +91,7 @@ class TvUiAndInstallerTests(unittest.TestCase):
             / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvGitHubUpdater.java"
         ).read_text(encoding="utf-8")
         patcher = (ROOT / "scripts/apply_overlay.py").read_text(encoding="utf-8")
-        self.assertIn('update.setText("Check for updates")', panel)
+        self.assertIn('update.setText("Check for Tihulu updates")', panel)
         self.assertIn('update.setText("Check for Tihulu updates")', about)
         self.assertIn("callback.checkForUpdates();", panel)
         self.assertIn("TvGitHubUpdater.checkAndInstall(this, mRoot);", activity)
@@ -104,13 +105,19 @@ class TvUiAndInstallerTests(unittest.TestCase):
         installer = (ROOT / "scripts/install-host-deps.sh").read_text(encoding="utf-8")
         builder = (ROOT / "scripts/build-apk-one-line.sh").read_text(encoding="utf-8")
         entrypoint = (ROOT / "install.sh").read_text(encoding="utf-8")
-        self.assertIn('GIT_MIN="2.41.0"', installer)
+        self.assertIn('GIT_MIN="2.46.0"', installer)
+        self.assertIn('GIT_FALLBACK_VERSION="2.54.0"', installer)
+        self.assertIn(
+            'GIT_FALLBACK_SHA256="f689162364c10de79ef89aa8dbf48731eb057e34edbbd20aca510ce0154681a3"',
+            installer,
+        )
         self.assertIn('NODE_MIN="24.16.0"', installer)
         self.assertIn('NODE_MAX="25.0.0"', installer)
         self.assertIn('PNPM_MIN="11.9.0"', installer)
         self.assertIn('npm install --prefix', installer)
         self.assertIn("latest-v24.x/SHASUMS256.txt", installer)
-        self.assertIn("sha256sum --check --strict", installer)
+        self.assertGreaterEqual(installer.count("sha256sum --check --strict"), 2)
+        self.assertNotIn("DEPOT_TOOLS_PYTHON_BYPASS", installer)
         self.assertIn("install-build-deps.sh", builder)
         self.assertIn("build-debug.sh", builder)
         self.assertIn("MEM_KB", builder)
@@ -126,7 +133,15 @@ class TvUiAndInstallerTests(unittest.TestCase):
         self.assertIn("Preserving the existing Chromium checkout", bootstrap)
         self.assertNotIn("rm -rf \"$WORKSPACE\"", bootstrap)
 
-    def test_brave_hooks_use_isolated_python_with_pip(self):
+    def test_bootstrap_does_not_repeat_deterministic_hook_failures(self):
+        bootstrap = (ROOT / "scripts/bootstrap.sh").read_text(encoding="utf-8")
+        self.assertIn("run_hooks_once_or_fail()", bootstrap)
+        self.assertIn("will not be retried in a loop", bootstrap)
+        self.assertIn('SYNC_MARKER="$WORKSPACE/.brave_latest_successful_sync.json"', bootstrap)
+        self.assertIn("Detected an existing synced Brave/Chromium checkout; skipping full init.", bootstrap)
+        self.assertIn("brave_sync_without_hooks()", bootstrap)
+
+    def test_brave_hooks_use_isolated_python_with_brave_pythonpath(self):
         installer = (ROOT / "scripts/install-host-deps.sh").read_text(encoding="utf-8")
         bootstrap = (ROOT / "scripts/bootstrap.sh").read_text(encoding="utf-8")
         self.assertIn("python3-venv", installer)
@@ -142,6 +157,7 @@ class TvUiAndInstallerTests(unittest.TestCase):
         self.assertIn('source "$brave_env"', bootstrap)
         self.assertIn('export PATH="$ROOT/.tools/python/bin:$PATH"', bootstrap)
         self.assertIn("Brave hook PYTHONPATH is missing", bootstrap)
+        self.assertIn("python3 -m pip --version", bootstrap)
         self.assertIn('"$HOOK_PYTHON" "$gclient_py" runhooks', bootstrap)
         self.assertNotIn("DEPOT_TOOLS_PYTHON_BYPASS", bootstrap)
 
