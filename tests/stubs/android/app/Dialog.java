@@ -6,6 +6,7 @@ import android.view.Window;
 public class Dialog implements DialogInterface {
     private boolean showing;
     public Dialog(Context c) {}
+    public boolean requestWindowFeature(int featureId) { return true; }
     public void setContentView(View v) {}
     public Window getWindow() { return new Window(); }
     public void setOnShowListener(DialogInterface.OnShowListener l) {}
