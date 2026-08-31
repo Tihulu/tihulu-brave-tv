@@ -306,9 +306,11 @@ else
   fi
 fi
 
+# Use the same fingerprinted overlay path as the build step. This both verifies the
+# current checkout and records the overlay fingerprint, so build-debug.sh does not
+# rewrite identical Java/resources immediately afterwards and invalidate Siso/Ninja work.
 cd "$ROOT"
-python3 scripts/apply_overlay.py "$WORKSPACE"
-python3 scripts/verify_overlay.py "$WORKSPACE"
+python3 scripts/ensure_overlay.py "$WORKSPACE"
 
 echo
 echo "Brave Android initialized with the TV overlay."
