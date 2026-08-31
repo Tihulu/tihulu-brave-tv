@@ -38,7 +38,8 @@ class TvFullscreenTests(unittest.TestCase):
         self.assertIn("refreshTvOverlayVisibility();", state_method)
 
     def test_fullscreen_observer_is_removed_via_supported_destroy_hook(self):
-        self.assertIn("protected void onDestroyInternal()", self.activity)
+        self.assertIn("public void onDestroyInternal()", self.activity)
+        self.assertNotIn("protected void onDestroyInternal()", self.activity)
         self.assertIn("getFullscreenManager().removeObserver(mFullscreenObserver);", self.activity)
         self.assertIn("super.onDestroyInternal();", self.activity)
 
