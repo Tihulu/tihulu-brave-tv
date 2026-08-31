@@ -21,7 +21,7 @@ import org.chromium.chrome.R;
 final class TvAboutPanel {
     private TvAboutPanel() {}
 
-    static void show(Context context, Runnable onCheckForUpdates) {
+    static void show(Context context, Runnable onCheckForUpdates, Runnable onCheckBraveUpstream) {
         Dialog dialog = new Dialog(context);
         LinearLayout column = new LinearLayout(context);
         column.setOrientation(LinearLayout.VERTICAL);
@@ -49,6 +49,17 @@ final class TvAboutPanel {
         engine.setTextSize(18);
         column.addView(engine, matchWrap());
 
+        TextView versions = new TextView(context);
+        versions.setText(
+                "Brave "
+                        + TvBuildInfo.BRAVE_VERSION
+                        + "  ·  Chromium "
+                        + TvBuildInfo.CHROMIUM_VERSION);
+        versions.setTextColor(Color.rgb(205, 205, 212));
+        versions.setTextSize(16);
+        versions.setPadding(0, dp(context, 6), 0, 0);
+        column.addView(versions, matchWrap());
+
         TextView description = new TextView(context);
         description.setText(
                 "An unofficial community browser adapted for Google TV and Android TV. "
@@ -59,13 +70,31 @@ final class TvAboutPanel {
         column.addView(description, matchWrap());
 
         Button update = new Button(context);
-        update.setText("Check for updates");
+        update.setText("Check for Tihulu updates");
         update.setOnClickListener(
                 v -> {
                     dialog.dismiss();
                     if (onCheckForUpdates != null) onCheckForUpdates.run();
                 });
         column.addView(update, matchWrap());
+
+        Button brave = new Button(context);
+        brave.setText("Check Brave upstream");
+        brave.setOnClickListener(
+                v -> {
+                    dialog.dismiss();
+                    if (onCheckBraveUpstream != null) onCheckBraveUpstream.run();
+                });
+        column.addView(brave, matchWrap());
+
+        TextView safety = new TextView(context);
+        safety.setText(
+                "Brave engine updates are installed only as a complete tested Tihulu TV Browser APK; "
+                        + "the app never replaces Chromium/Brave engine files in place.");
+        safety.setTextColor(Color.rgb(180, 180, 188));
+        safety.setTextSize(14);
+        safety.setPadding(0, dp(context, 10), 0, dp(context, 6));
+        column.addView(safety, matchWrap());
 
         Button close = new Button(context);
         close.setText("Close");
