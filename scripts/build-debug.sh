@@ -102,3 +102,13 @@ if [[ "$ARCH" == "arm" ]]; then
 fi
 
 "${PNPM[@]}" "${BUILD_ARGS[@]}"
+
+# Brave may leave ErrorProne/NullAway work running after the main Ninja graph reports
+# success. Do not let a caller install an APK while those checks can still fail in the
+# background. The user's shell commonly chains this script with `&& install-apk.sh`,
+# so a static-analysis failure must be visible as a build failure first.
+cd "$WORKSPACE/src"
+if [[ -f build/android/fast_local_dev_server.py ]]; then
+  echo "Waiting for Chromium background static analysis to finish..." >&2
+  python3 build/android/fast_local_dev_server.py --wait-for-idle
+fi
