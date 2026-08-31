@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import sys
 from pathlib import Path
@@ -19,6 +20,8 @@ JAVA_CLASSES = [
     "TvMouseDispatcher.java",
     "TvControlPanel.java",
     "TvAboutPanel.java",
+    "TvBuildInfo.java",
+    "TvBraveUpstream.java",
     "TvBrowserBar.java",
     "TvTabPanel.java",
     "TvGitHubUpdater.java",
@@ -218,11 +221,46 @@ def patch_manifest(path: Path) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def copy_overlay(project: Path) -> None:
+def load_brave_versions(package_json: Path) -> tuple[str, str]:
+    try:
+        data = json.loads(package_json.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise PatchError(f"Unable to read Brave package metadata: {exc}") from exc
+
+    brave = str(data.get("version", "")).strip()
+    chromium = str(
+        data.get("config", {})
+        .get("projects", {})
+        .get("chrome", {})
+        .get("tag", "")
+    ).strip()
+    if not brave or not chromium:
+        raise PatchError("Brave package metadata is missing version or Chromium tag")
+    return brave, chromium
+
+
+def render_build_info(destination: Path, brave_version: str, chromium_version: str) -> None:
+    template = (OVERLAY_JAVA / "TvBuildInfo.java").read_text(encoding="utf-8")
+    rendered = template.replace(
+        'static final String BRAVE_VERSION = "development";',
+        f'static final String BRAVE_VERSION = "{brave_version}";',
+    ).replace(
+        'static final String CHROMIUM_VERSION = "unknown";',
+        f'static final String CHROMIUM_VERSION = "{chromium_version}";',
+    )
+    if rendered == template:
+        raise PatchError("TvBuildInfo.java template markers changed")
+    (destination / "TvBuildInfo.java").write_text(rendered, encoding="utf-8")
+
+
+def copy_overlay(project: Path, brave_version: str, chromium_version: str) -> None:
     destination = project / "src/brave/android/java/org/chromium/chrome/browser/tv"
     destination.mkdir(parents=True, exist_ok=True)
     for name in JAVA_CLASSES:
+        if name == "TvBuildInfo.java":
+            continue
         shutil.copy2(OVERLAY_JAVA / name, destination / name)
+    render_build_info(destination, brave_version, chromium_version)
 
     resource_dir = project / "src/chrome/android/java/res/drawable-nodpi"
     resource_dir.mkdir(parents=True, exist_ok=True)
@@ -318,6 +356,7 @@ def apply(project: Path) -> None:
         "Brave application": project
         / "src/brave/android/java/org/chromium/chrome/browser/BraveApplicationImplBase.java",
         "Chromium manifest": project / "src/chrome/android/java/AndroidManifest.xml",
+        "Brave package metadata": project / "src/brave/package.json",
     }
     missing = [f"{name}: {path}" for name, path in required.items() if not path.is_file()]
     if missing:
@@ -330,16 +369,21 @@ def apply(project: Path) -> None:
         if not asset.is_file():
             raise PatchError(f"Missing branding asset: {asset}")
 
+    brave_version, chromium_version = load_brave_versions(required["Brave package metadata"])
+
     # Validate every upstream anchor before touching the checkout. A drift failure must not
     # leave a half-applied overlay behind.
     preflight(required)
-    copy_overlay(project)
+    copy_overlay(project, brave_version, chromium_version)
     patch_java_sources(required["java sources"])
     patch_chrome_resources(required["Chrome resources"])
     patch_brave_application(required["Brave application"])
     patch_manifest(required["Chromium manifest"])
 
-    print(f"Tihulu TV Browser overlay applied to {project}")
+    print(
+        f"Tihulu TV Browser overlay applied to {project} "
+        f"(Brave {brave_version}, Chromium {chromium_version})"
+    )
 
 
 def main() -> int:
