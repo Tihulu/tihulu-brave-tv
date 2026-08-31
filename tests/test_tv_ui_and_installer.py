@@ -42,6 +42,8 @@ class TvUiAndInstallerTests(unittest.TestCase):
             ROOT
             / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvAboutPanel.java"
         ).read_text(encoding="utf-8")
+        self.assertIn("public final class TvMemoryProfile", profile)
+        self.assertIn("public static void apply(Context context)", profile)
         self.assertIn('LOW_END_DEVICE_SWITCH = "enable-low-end-device-mode"', profile)
         self.assertIn("if (!Process.is64Bit()) return true;", profile)
         self.assertIn("manager.isLowRamDevice()", profile)
@@ -181,7 +183,8 @@ class TvUiAndInstallerTests(unittest.TestCase):
         self.assertIn('HOOK_PYTHON="$ROOT/.tools/python/bin/python3"', bootstrap)
         self.assertIn("run_brave_hooks()", bootstrap)
         self.assertIn('brave_env="$BRAVE_CORE/build/env.sh"', bootstrap)
-        self.assertIn('gclient_py="$BRAVE_CORE/vendor/depot_tools/gclient.py"', bootstrap)
+        self.assertIn('depot_tools="$BRAVE_CORE/vendor/depot_tools"', bootstrap)
+        self.assertIn('gclient_py="$depot_tools/gclient.py"', bootstrap)
         self.assertIn('pnpm_run run sync --target_os=android --target_arch="$ARCH" --nohooks', bootstrap)
         self.assertIn('pnpm_run run init --target_os=android --target_arch="$ARCH" --nohooks', bootstrap)
         self.assertIn('source "$brave_env"', bootstrap)
