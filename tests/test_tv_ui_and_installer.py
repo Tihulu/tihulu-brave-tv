@@ -22,6 +22,36 @@ class TvUiAndInstallerTests(unittest.TestCase):
         self.assertIn("event.getRepeatCount() > 0", text)
         self.assertIn("focusTvBrowserBar();", text)
 
+    def test_cursor_overlay_is_lazy_for_low_memory_tvs(self):
+        activity = (
+            ROOT
+            / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBraveActivity.java"
+        ).read_text(encoding="utf-8")
+        self.assertIn("mRoot.post(this::installTvBrowserBar);", activity)
+        self.assertIn("ensureCursorInitialized();", activity)
+        self.assertIn("private void ensureCursorInitialized()", activity)
+        self.assertNotIn("initializeCursor();", activity)
+
+    def test_low_memory_profile_uses_chromium_supported_mode(self):
+        profile = (
+            ROOT
+            / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvMemoryProfile.java"
+        ).read_text(encoding="utf-8")
+        patcher = (ROOT / "scripts/apply_overlay.py").read_text(encoding="utf-8")
+        about = (
+            ROOT
+            / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvAboutPanel.java"
+        ).read_text(encoding="utf-8")
+        self.assertIn('LOW_END_DEVICE_SWITCH = "enable-low-end-device-mode"', profile)
+        self.assertIn("if (!Process.is64Bit()) return true;", profile)
+        self.assertIn("manager.isLowRamDevice()", profile)
+        self.assertIn("CommandLine.getInstance().appendSwitch(LOW_END_DEVICE_SWITCH);", profile)
+        self.assertIn("TvMemoryProfile.apply(getApplication());", patcher)
+        self.assertIn("TvMemoryProfile.runtimeLabel(context)", about)
+        for unsafe in ["single-process", "process-per-site", "renderer-process-limit"]:
+            self.assertNotIn(unsafe, profile)
+            self.assertNotIn(unsafe, patcher)
+
     def test_branding_surfaces_are_wired(self):
         panel = (
             ROOT
@@ -150,8 +180,8 @@ class TvUiAndInstallerTests(unittest.TestCase):
         self.assertIn('"$host_python" -m venv "$python_env"', installer)
         self.assertIn('HOOK_PYTHON="$ROOT/.tools/python/bin/python3"', bootstrap)
         self.assertIn("run_brave_hooks()", bootstrap)
-        self.assertIn('brave_env="$WORKSPACE/src/brave/build/env.sh"', bootstrap)
-        self.assertIn('gclient_py="$depot_tools/gclient.py"', bootstrap)
+        self.assertIn('brave_env="$BRAVE_CORE/build/env.sh"', bootstrap)
+        self.assertIn('gclient_py="$BRAVE_CORE/vendor/depot_tools/gclient.py"', bootstrap)
         self.assertIn('pnpm_run run sync --target_os=android --target_arch="$ARCH" --nohooks', bootstrap)
         self.assertIn('pnpm_run run init --target_os=android --target_arch="$ARCH" --nohooks', bootstrap)
         self.assertIn('source "$brave_env"', bootstrap)
