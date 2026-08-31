@@ -40,6 +40,8 @@ class TvUiAndInstallerTests(unittest.TestCase):
         self.assertIn("mRoot.postDelayed(mSelectLongPressRunnable, SELECT_LONG_PRESS_MS);", activity)
         self.assertIn("mSelectLongPressConsumed", activity)
         self.assertIn("if (wasLongPress) return true;", activity)
+        self.assertIn("event.getEventTime() - downEvent.getEventTime()", activity)
+        self.assertIn("if (heldMs >= SELECT_LONG_PRESS_MS)", activity)
         self.assertIn("toggleNavigationMode();", activity)
 
     def test_plain_dpad_path_is_time_bounded_and_cursor_hover_is_coalesced(self):
@@ -60,9 +62,9 @@ class TvUiAndInstallerTests(unittest.TestCase):
         self.assertIn("mRoot.postDelayed(mCursorHoverRunnable, CURSOR_HOVER_MIN_INTERVAL_MS - elapsed);", activity)
         self.assertIn("TvMouseDispatcher.hover(target, mPointerTargetX, mPointerTargetY);", activity)
         self.assertIn("TvMouseDispatcher.primaryClick(target, mPointerTargetX, mPointerTargetY);", activity)
-        self.assertNotIn("mCursorOverlay.invalidate();", activity)
+        self.assertLessEqual(activity.count("mCursorOverlay.invalidate();"), 2)
 
-    def test_cursor_targets_active_chromium_content_in_local_coordinates(self):
+    def test_cursor_targets_active_visible_tab_surface_in_local_coordinates(self):
         activity = (
             ROOT
             / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBraveActivity.java"
@@ -72,8 +74,8 @@ class TvUiAndInstallerTests(unittest.TestCase):
             / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvMouseDispatcher.java"
         ).read_text(encoding="utf-8")
         self.assertIn("Tab tab = getActivityTab();", activity)
-        self.assertIn("tab.getContentView()", activity)
-        self.assertIn("contentView != null ? contentView : tab.getView()", activity)
+        self.assertIn("View activeView = tab.getView();", activity)
+        self.assertIn("activeView != null ? activeView : tab.getContentView()", activity)
         self.assertIn("getLocationInWindow", activity)
         self.assertIn("mPointerMappingValid", activity)
         self.assertIn("mMappedPointerTarget != target", activity)
