@@ -116,6 +116,16 @@ class TvUiAndInstallerTests(unittest.TestCase):
         self.assertIn("MEM_KB", builder)
         self.assertIn("git clone https://github.com/Tihulu/tihulu-brave-tv.git", entrypoint)
 
+    def test_bootstrap_recovers_from_public_gclient_rate_limits(self):
+        bootstrap = (ROOT / "scripts/bootstrap.sh").read_text(encoding="utf-8")
+        self.assertIn('RECOVERY_JOBS="${BRAVE_GCLIENT_RECOVERY_JOBS:-8}"', bootstrap)
+        self.assertIn('RECOVERY_ATTEMPTS="${BRAVE_GCLIENT_RECOVERY_ATTEMPTS:-5}"', bootstrap)
+        self.assertIn("recover_gclient_sync()", bootstrap)
+        self.assertIn('--jobs="$RECOVERY_JOBS"', bootstrap)
+        self.assertIn('sleep "$delay"', bootstrap)
+        self.assertIn("Preserving the existing Chromium checkout", bootstrap)
+        self.assertNotIn("rm -rf \"$WORKSPACE\"", bootstrap)
+
     def test_optional_apt_packages_require_real_candidate(self):
         installer = (ROOT / "scripts/install-host-deps.sh").read_text(encoding="utf-8")
         self.assertIn("package_has_candidate()", installer)
