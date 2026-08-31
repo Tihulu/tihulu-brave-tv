@@ -39,17 +39,47 @@ class TvUiAndInstallerTests(unittest.TestCase):
         self.assertIn('about.setText("About Tihulu TV Browser")', panel)
         self.assertIn('title.setText("Tihulu TV Browser")', about)
         self.assertIn('engine.setText("Based on Brave & Chromium")', about)
+        self.assertIn("TvBuildInfo.BRAVE_VERSION", about)
+        self.assertIn("TvBuildInfo.CHROMIUM_VERSION", about)
         self.assertIn("R.drawable.tihulu_tv_icon", about)
-        self.assertIn("TvAboutPanel.show(this, this::checkForUpdates);", activity)
+        self.assertIn(
+            "TvAboutPanel.show(this, this::checkForUpdates, this::checkBraveUpstream);",
+            activity,
+        )
         self.assertIn('android:icon="@drawable/tihulu_tv_icon"', patcher)
         self.assertIn('android:banner="@drawable/tihulu_tv_banner"', patcher)
         self.assertTrue((ROOT / "assets/branding/tihulu_tv_icon.png").is_file())
         self.assertTrue((ROOT / "assets/branding/tihulu_tv_banner.png").is_file())
 
+    def test_brave_upstream_check_is_read_only(self):
+        about = (
+            ROOT
+            / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvAboutPanel.java"
+        ).read_text(encoding="utf-8")
+        activity = (
+            ROOT
+            / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBraveActivity.java"
+        ).read_text(encoding="utf-8")
+        checker = (
+            ROOT
+            / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBraveUpstream.java"
+        ).read_text(encoding="utf-8")
+        self.assertIn('brave.setText("Check Brave upstream")', about)
+        self.assertIn("TvBraveUpstream.check(this, mRoot);", activity)
+        self.assertIn("brave/brave-browser/releases/latest", checker)
+        self.assertIn("Update safely through a newer Tihulu TV Browser APK", checker)
+        self.assertNotIn("DownloadManager", checker)
+        self.assertNotIn("ACTION_VIEW", checker)
+        self.assertNotIn("REQUEST_INSTALL_PACKAGES", checker)
+
     def test_github_update_button_downloads_release_apk(self):
         panel = (
             ROOT
             / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvControlPanel.java"
+        ).read_text(encoding="utf-8")
+        about = (
+            ROOT
+            / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvAboutPanel.java"
         ).read_text(encoding="utf-8")
         activity = (
             ROOT
@@ -61,6 +91,7 @@ class TvUiAndInstallerTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         patcher = (ROOT / "scripts/apply_overlay.py").read_text(encoding="utf-8")
         self.assertIn('update.setText("Check for updates")', panel)
+        self.assertIn('update.setText("Check for Tihulu updates")', about)
         self.assertIn("callback.checkForUpdates();", panel)
         self.assertIn("TvGitHubUpdater.checkAndInstall(this, mRoot);", activity)
         self.assertIn("/releases/latest", updater)
