@@ -17,12 +17,23 @@ class ChromiumLifecycleContractTests(unittest.TestCase):
         self.assertIn("mTvUiInitialized || isFinishing() || !isTelevision()", activity)
         self.assertIn("mRoot.post(this::installTvBrowserBar);", activity)
 
-    def test_java_stub_models_upstream_final_on_create(self):
+    def test_tv_activity_uses_supported_destroy_hook(self):
+        activity = (
+            ROOT
+            / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBraveActivity.java"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("protected void onDestroy()", activity)
+        self.assertIn("protected void onDestroyInternal()", activity)
+        self.assertIn("super.onDestroyInternal();", activity)
+
+    def test_java_stub_models_upstream_final_on_create_and_destroy_hook(self):
         stub = (
             ROOT / "tests/stubs/org/chromium/chrome/browser/ChromeTabbedActivity.java"
         ).read_text(encoding="utf-8")
         self.assertIn("protected final void onCreate(Bundle b)", stub)
         self.assertIn("public void performPostInflationStartup()", stub)
+        self.assertIn("protected void onDestroyInternal()", stub)
+        self.assertIn("public FullscreenManager getFullscreenManager()", stub)
 
 
 if __name__ == "__main__":
