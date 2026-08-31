@@ -20,6 +20,14 @@ class BuildInstallGuardTests(unittest.TestCase):
         self.assertIn('Refusing to attempt a cross-ABI install.', installer)
         self.assertNotIn('android_*${ARCH}', installer)
 
+    def test_installer_checks_synced_chromium_min_sdk(self):
+        installer = (ROOT / "scripts/install-apk.sh").read_text(encoding="utf-8")
+        self.assertIn('src/build/config/android/config.gni', installer)
+        self.assertIn('default_min_sdk_version', installer)
+        self.assertIn('shell getprop ro.build.version.sdk', installer)
+        self.assertIn('INSTALL_FAILED_OLDER_SDK', installer)
+        self.assertNotIn('MIN_SDK="29"', installer)
+
 
 if __name__ == "__main__":
     unittest.main()
