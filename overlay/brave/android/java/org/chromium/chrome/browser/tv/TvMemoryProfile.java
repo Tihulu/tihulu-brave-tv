@@ -12,12 +12,13 @@ import android.os.Process;
 import org.chromium.base.CommandLine;
 
 /** Applies Chromium's supported low-end profile where TV memory pressure is most likely. */
-final class TvMemoryProfile {
+public final class TvMemoryProfile {
     private static final String LOW_END_DEVICE_SWITCH = "enable-low-end-device-mode";
 
     private TvMemoryProfile() {}
 
-    static void apply(Context context) {
+    /** Called from Brave's application bootstrap, which lives outside the tv package. */
+    public static void apply(Context context) {
         if (shouldUseLowMemoryProfile(context)) {
             CommandLine.getInstance().appendSwitch(LOW_END_DEVICE_SWITCH);
         }
