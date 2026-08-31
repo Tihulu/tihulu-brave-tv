@@ -28,10 +28,23 @@ class TvUiAndInstallerTests(unittest.TestCase):
         self.assertIn("event.getRepeatCount() > 0", text)
         self.assertIn("showBrowserBar();", text)
         self.assertIn("toggleNavigationMode();", text)
-        self.assertIn("Remote: hold ↑ for browser bar", text)
+        self.assertIn("Hold ↑ for bar", text)
         self.assertIn("keyCode == KeyEvent.KEYCODE_DPAD_DOWN", (
             ROOT / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBrowserBar.java"
         ).read_text(encoding="utf-8"))
+
+    def test_plain_dpad_path_stays_chromium_native_and_cursor_accelerates(self):
+        activity = (
+            ROOT
+            / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBraveActivity.java"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("maybeShowRemoteHint", activity)
+        self.assertIn("Plain D-pad navigation remains Chromium-native", activity)
+        self.assertIn("CURSOR_REPEAT_ACCELERATION", activity)
+        self.assertIn("CURSOR_MAX_ACCEL_REPEAT", activity)
+        self.assertIn("moveCursorForKey(keyCode, event.getRepeatCount());", activity)
+        self.assertIn("int boundedRepeat = Math.min(Math.max(repeatCount, 0)", activity)
+        self.assertIn("float multiplier = 1.0f + boundedRepeat * CURSOR_REPEAT_ACCELERATION;", activity)
 
     def test_cursor_overlay_and_runtime_ui_are_lazy_for_low_memory_tvs(self):
         activity = (
