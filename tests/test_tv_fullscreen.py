@@ -17,8 +17,11 @@ class TvFullscreenTests(unittest.TestCase):
         self.assertIn("fullscreenManager.addObserver(mFullscreenObserver);", self.activity)
         self.assertIn("setTvFullscreenState(fullscreenManager.getPersistentFullscreenMode());", self.activity)
 
-    def test_fullscreen_hides_tihulu_bar_and_cursor(self):
-        self.assertIn("mTvBrowserBar.setVisibility(mHtmlFullscreen ? View.GONE : View.VISIBLE);", self.activity)
+    def test_fullscreen_closes_browser_bar_and_hides_cursor(self):
+        state = self.activity.split("private void setTvFullscreenState", 1)[1].split(
+            "private void refreshTvOverlayVisibility", 1
+        )[0]
+        self.assertIn("dismissBrowserBar();", state)
         self.assertIn("!mHtmlFullscreen && mNavigationMode == TvNavigationMode.CURSOR", self.activity)
         self.assertIn("mCursorOverlay.setVisibility(showCursor ? View.VISIBLE : View.GONE);", self.activity)
 
@@ -37,7 +40,12 @@ class TvFullscreenTests(unittest.TestCase):
         self.assertNotIn("mNavigationMode =", state_method)
         self.assertIn("refreshTvOverlayVisibility();", state_method)
 
-    def test_fullscreen_observer_is_removed_via_supported_destroy_hook(self):
+    def test_fullscreen_observer_is_lazy_and_removed_via_supported_destroy_hook(self):
+        startup = self.activity.split("public void performPostInflationStartup()", 1)[1].split(
+            "public void onDestroyInternal()", 1
+        )[0]
+        self.assertNotIn("getFullscreenManager()", startup)
+        self.assertIn("private void ensureFullscreenObserverRegistered()", self.activity)
         self.assertIn("public void onDestroyInternal()", self.activity)
         self.assertNotIn("protected void onDestroyInternal()", self.activity)
         self.assertIn("getFullscreenManager().removeObserver(mFullscreenObserver);", self.activity)
