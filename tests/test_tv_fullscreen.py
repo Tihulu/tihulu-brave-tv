@@ -31,17 +31,20 @@ class TvFullscreenTests(unittest.TestCase):
         self.assertNotIn("!mHtmlFullscreen && mNavigationMode", visibility)
         self.assertIn("mCursorOverlay.setVisibility(showCursor ? View.VISIBLE : View.GONE);", visibility)
 
-    def test_fullscreen_dpad_is_native_but_cursor_owns_direction_keys(self):
+    def test_fullscreen_dpad_directions_are_native_but_select_can_toggle_cursor(self):
         dispatch = self.activity.split("public boolean dispatchKeyEvent(KeyEvent event)", 1)[1].split(
             "public TvNavigationMode navigationMode()", 1
         )[0]
-        native_guard = "if (mHtmlFullscreen && mNavigationMode == TvNavigationMode.DPAD)"
         cursor_branch = "if (mNavigationMode == TvNavigationMode.CURSOR)"
-        self.assertIn(native_guard, dispatch)
+        select_handler = (
+            "if (isSelectKey(event.getKeyCode()) && handleSelectKeyEvent(event)) return true;"
+        )
+        self.assertIn("mHtmlFullscreen", dispatch)
+        self.assertIn("mNavigationMode == TvNavigationMode.DPAD", dispatch)
+        self.assertIn("!isSelectKey(event.getKeyCode())", dispatch)
+        self.assertIn(select_handler, dispatch)
         self.assertIn(cursor_branch, dispatch)
-        self.assertLess(dispatch.index(native_guard), dispatch.index(cursor_branch))
         self.assertIn("moveCursorForKey(keyCode, event.getRepeatCount());", dispatch)
-        self.assertIn("!mHtmlFullscreen", dispatch)
         self.assertNotIn("if (mHtmlFullscreen) return super.dispatchKeyEvent(event);", dispatch)
 
     def test_navigation_mode_is_preserved_across_fullscreen(self):
