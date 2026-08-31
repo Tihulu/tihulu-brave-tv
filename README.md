@@ -92,6 +92,81 @@ curl -fsSL https://raw.githubusercontent.com/Tihulu/tihulu-brave-tv/main/install
 > [!NOTE]
 > The one-line command automates setup; it does not make Chromium small. Brave initialization downloads a very large source/dependency tree and the full compile can take a long time.
 
+## ADB + Google TV installation
+
+ADB is only required when you want the computer to install the generated APK directly on a Google TV / Android TV device. Root is not required.
+
+The one-line installer installs the `adb` package automatically on Ubuntu, Pop!_OS and Debian. To check it manually:
+
+```bash
+adb version
+```
+
+### 1. Enable developer options on the TV
+
+On most Google TV / Android TV devices:
+
+1. Open **Settings**.
+2. Open **System** -> **About**.
+3. Highlight **Android TV OS build** / **Build**.
+4. Press **OK** repeatedly until the TV reports that developer mode is enabled.
+5. Return to **System** -> **Developer options**.
+
+Menu names can vary by manufacturer and Android TV version.
+
+### 2. Choose USB or wireless ADB
+
+For USB debugging, enable **USB debugging**, connect the TV/device to the computer if the hardware supports an ADB-capable USB connection, then accept the authorization prompt shown on the TV.
+
+For wireless debugging, put the computer and TV on the same network, enable **Wireless debugging**, then use the pairing address and pairing code shown by the TV:
+
+```bash
+adb pair TV_IP:PAIRING_PORT
+```
+
+Enter the pairing code from the TV when prompted. Then connect using the TV's ADB connection address/port:
+
+```bash
+adb connect TV_IP:ADB_PORT
+```
+
+The pairing port and normal ADB connection port may be different; use the values shown on the TV.
+
+### 3. Verify the TV is ready
+
+```bash
+adb devices
+```
+
+A working connection should show the TV with the state `device`. If it shows `unauthorized`, unlock/check the TV screen and accept the computer authorization prompt. If it shows `offline`, reconnect or restart ADB:
+
+```bash
+adb kill-server
+adb start-server
+adb devices
+```
+
+### 4. Build and install automatically
+
+Once `adb devices` shows the TV as `device`, run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Tihulu/tihulu-brave-tv/main/install.sh | INSTALL_TO_TV=1 bash
+```
+
+The build script finds the newest generated Brave APK for the requested architecture and installs it with `adb install -r`.
+
+If the APK is already built, install it without rebuilding:
+
+```bash
+cd ~/tihulu-brave-tv
+./scripts/install-apk.sh arm64
+```
+
+The TV launcher entry is **Tihulu TV Browser**.
+
+For troubleshooting, pairing examples, multiple-device handling and manual APK installation, see [`docs/ADB_INSTALL.md`](docs/ADB_INSTALL.md).
+
 ## Manual build (Ubuntu / Pop!_OS / Debian)
 
 A Brave/Chromium build is large. Brave documents that initialization pulls many repositories and tens of gigabytes of source code. Make sure you have substantial free disk space before starting.
@@ -174,15 +249,13 @@ The wrapper reapplies/verifies the TV overlay first, then invokes Brave's curren
 
 ### 6. Connect a Google TV / Android TV device
 
-Enable **Developer options** and **USB debugging** or **Wireless debugging** on the TV.
+Enable **Developer options** and **USB debugging** or **Wireless debugging** on the TV, then follow the full [`ADB installation guide`](docs/ADB_INSTALL.md).
 
 Check the connection:
 
 ```bash
 adb devices
 ```
-
-For wireless ADB, pair/connect using the address shown by Android TV's Wireless debugging screen.
 
 ### 7. Install the APK
 
