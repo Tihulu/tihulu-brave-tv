@@ -3,13 +3,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ACTIVITY = ROOT / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBraveActivity.java"
-CURSOR_SOURCE = ROOT / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvCursorOverlay.java"
+WINDOW = ROOT / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvCursorWindow.java"
 
 
 class TvCursorWindowTests(unittest.TestCase):
     def setUp(self):
         self.activity = ACTIVITY.read_text(encoding="utf-8")
-        self.window = CURSOR_SOURCE.read_text(encoding="utf-8")
+        self.window = WINDOW.read_text(encoding="utf-8")
 
     def test_cursor_is_not_drawn_in_activity_view_overlay(self):
         self.assertNotIn("ViewGroupOverlay", self.activity)
