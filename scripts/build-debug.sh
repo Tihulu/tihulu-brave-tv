@@ -37,6 +37,11 @@ if [[ ! -d "$BRAVE_CORE/.git" ]] || [[ ! -d "$CHROMIUM_ROOT/.git" ]]; then
   exit 2
 fi
 
+# Fail before touching the checkout or starting a large Android build if the pinned Brave/Chromium
+# initialization contract drifted. In particular, keep Brave Shields/adblock wired through the
+# normal browser-process/component-updater path and reject unsafe ARM32 process/security shortcuts.
+python3 "$ROOT/scripts/verify_brave_runtime_contract.py" "$WORKSPACE"
+
 # Compatibility patches are intentionally ephemeral. This keeps the pinned Brave
 # checkout clean between runs, so bootstrap/ref switching never mistakes them for user
 # work. Recover only our own marked leftovers from an interrupted prior run; never
