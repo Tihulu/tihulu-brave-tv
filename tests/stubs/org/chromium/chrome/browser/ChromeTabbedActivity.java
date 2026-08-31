@@ -16,7 +16,7 @@ public class ChromeTabbedActivity extends Context {
 
     public void performPostInflationStartup() {}
 
-    protected void onDestroyInternal() {}
+    public void onDestroyInternal() {}
 
     public FullscreenManager getFullscreenManager() {
         return fullscreenManager;
