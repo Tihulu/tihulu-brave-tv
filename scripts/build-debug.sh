@@ -38,6 +38,14 @@ if [[ ! -d "$BRAVE_CORE/.git" ]] || [[ ! -d "$CHROMIUM_ROOT/.git" ]]; then
   exit 2
 fi
 
+# A failed Chromium Java/ErrorProne action can leave analysis workers running after Ninja exits.
+# Wait before touching any ephemeral compatibility source so a stale worker cannot race the next
+# incremental build against a newly patched EventForwarder or UA stylesheet.
+if [[ -f "$CHROMIUM_ROOT/build/android/fast_local_dev_server.py" ]]; then
+  echo "Waiting for stale Chromium background static analysis before patching..." >&2
+  python3 "$CHROMIUM_ROOT/build/android/fast_local_dev_server.py" --wait-for-idle
+fi
+
 # Fail before touching the checkout or starting a large Android build if the pinned Brave/Chromium
 # initialization contract drifted. In particular, keep Brave Shields/adblock wired through the
 # normal browser-process/component-updater path and reject unsafe ARM32 process/security shortcuts.
