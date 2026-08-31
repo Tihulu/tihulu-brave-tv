@@ -44,7 +44,7 @@ class ChromiumErrorProneContractTests(unittest.TestCase):
         builder = (ROOT / "scripts/build-debug.sh").read_text(encoding="utf-8")
         self.assertIn("fast_local_dev_server.py --wait-for-idle", builder)
         self.assertIn("Waiting for Chromium background static analysis", builder)
-        self.assertIn('cd "$WORKSPACE/src"', builder)
+        self.assertIn('cd "$CHROMIUM_ROOT"', builder)
 
 
 if __name__ == "__main__":
