@@ -15,36 +15,55 @@ class TvUiAndInstallerTests(unittest.TestCase):
         self.assertIn("dp(context, 64)", text)
         self.assertIn("setOnFocusChangeListener", text)
         self.assertIn("FOCUSED_BG", text)
-        self.assertIn("setScaleX(focused ? 1.06f : 1.0f)", text)
+        self.assertIn('button.setText(focused ? "▶ " + label + " ◀" : label);', text)
+        self.assertNotIn("setScaleX", text)
+        self.assertNotIn("setScaleY", text)
         self.assertIn("window.setGravity(Gravity.TOP);", text)
         self.assertIn("window.setDimAmount(0.0f);", text)
 
     def test_remote_can_open_close_bar_and_toggle_navigation_with_six_keys(self):
-        text = (
-            ROOT
-            / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBraveActivity.java"
-        ).read_text(encoding="utf-8")
-        self.assertIn("event.getKeyCode() == KeyEvent.KEYCODE_DPAD_UP", text)
-        self.assertIn("event.getRepeatCount() > 0", text)
-        self.assertIn("showBrowserBar();", text)
-        self.assertIn("toggleNavigationMode();", text)
-        self.assertIn("Hold ↑ for bar", text)
-        self.assertIn("keyCode == KeyEvent.KEYCODE_DPAD_DOWN", (
-            ROOT / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBrowserBar.java"
-        ).read_text(encoding="utf-8"))
-
-    def test_plain_dpad_path_stays_chromium_native_and_cursor_accelerates(self):
         activity = (
             ROOT
             / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBraveActivity.java"
         ).read_text(encoding="utf-8")
-        self.assertNotIn("maybeShowRemoteHint", activity)
-        self.assertIn("Plain D-pad navigation remains Chromium-native", activity)
+        bar = (
+            ROOT
+            / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBrowserBar.java"
+        ).read_text(encoding="utf-8")
+        self.assertIn("event.getKeyCode() == KeyEvent.KEYCODE_DPAD_UP", activity)
+        self.assertIn("event.getRepeatCount() > 0", activity)
+        self.assertIn("postShowBrowserBar();", activity)
+        self.assertIn("toggleNavigationMode();", bar)
+        self.assertIn("Mode button: Cursor/D-pad", bar)
+        self.assertIn("keyCode == KeyEvent.KEYCODE_DPAD_DOWN", bar)
+        self.assertNotIn("mSelectLongPressConsumed", activity)
+
+    def test_plain_dpad_path_is_throttled_and_cursor_does_not_emit_hover_storms(self):
+        activity = (
+            ROOT
+            / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBraveActivity.java"
+        ).read_text(encoding="utf-8")
+        self.assertIn("DPAD_REPEAT_DIVISOR = 3", activity)
+        self.assertIn("event.getRepeatCount() % DPAD_REPEAT_DIVISOR != 0", activity)
         self.assertIn("CURSOR_REPEAT_ACCELERATION", activity)
         self.assertIn("CURSOR_MAX_ACCEL_REPEAT", activity)
         self.assertIn("moveCursorForKey(keyCode, event.getRepeatCount());", activity)
         self.assertIn("int boundedRepeat = Math.min(Math.max(repeatCount, 0)", activity)
         self.assertIn("float multiplier = 1.0f + boundedRepeat * CURSOR_REPEAT_ACCELERATION;", activity)
+        self.assertNotIn("TvMouseDispatcher.hover(", activity)
+        self.assertIn("TvMouseDispatcher.primaryClick(", activity)
+
+    def test_tv_mode_lookup_is_cached_out_of_remote_hot_path(self):
+        activity = (
+            ROOT
+            / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBraveActivity.java"
+        ).read_text(encoding="utf-8")
+        dispatch = activity.split("public boolean dispatchKeyEvent(KeyEvent event)", 1)[1].split(
+            "public TvNavigationMode navigationMode()", 1
+        )[0]
+        self.assertIn("if (!mTvRuntimeEnabled)", dispatch)
+        self.assertNotIn("isTelevision()", dispatch)
+        self.assertIn("mTvRuntimeEnabled = isTelevision();", activity)
 
     def test_cursor_overlay_and_runtime_ui_are_lazy_for_low_memory_tvs(self):
         activity = (
