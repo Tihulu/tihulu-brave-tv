@@ -8,7 +8,6 @@ package org.chromium.chrome.browser.tv;
 import android.app.UiModeManager;
 import android.content.Context;
 import android.content.res.Configuration;
-import android.os.Bundle;
 import android.os.SystemClock;
 import android.view.KeyEvent;
 import android.view.View;
@@ -37,11 +36,19 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     private TvBrowserBar mTvBrowserBar;
     private ViewGroup mRoot;
     private boolean mSelectLongPressConsumed;
+    private boolean mTvUiInitialized;
 
+    /**
+     * Chromium's AsyncInitializationActivity owns a final onCreate(). The supported subclass hook
+     * after the Chrome layout has been inflated is performPostInflationStartup(). Keeping all TV
+     * view attachment here avoids racing Chrome's own content inflation and follows the upstream
+     * lifecycle contract.
+     */
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        if (!isTelevision()) return;
+    public void performPostInflationStartup() {
+        super.performPostInflationStartup();
+        if (mTvUiInitialized || isFinishing() || !isTelevision()) return;
+        mTvUiInitialized = true;
 
         mRoot = (ViewGroup) getWindow().getDecorView();
         // Cursor objects are intentionally lazy. Most low-memory TV boxes can stay in D-pad mode
