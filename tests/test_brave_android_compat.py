@@ -127,6 +127,13 @@ class BraveAndroidCompatTests(unittest.TestCase):
 }"""
         self.assertNotIn(unconditional, fixed)
 
+    def test_gn_markers_use_gn_comment_syntax(self):
+        fixed, _ = compat.transform_sources_gni(BUGGY_SOURCES_GNI)
+        self.assertIn("# TIHULU_ANDROID_ADS_TOOLTIP_COMPAT_GN_BEGIN", fixed)
+        self.assertIn("# TIHULU_ANDROID_ADS_TOOLTIP_COMPAT_GN_END", fixed)
+        self.assertNotIn("// TIHULU_ANDROID_ADS_TOOLTIP_COMPAT_GN_BEGIN", fixed)
+        self.assertNotIn("// TIHULU_ANDROID_ADS_TOOLTIP_COMPAT_GN_END", fixed)
+
     def test_gn_transform_is_idempotent(self):
         fixed, _ = compat.transform_sources_gni(BUGGY_SOURCES_GNI)
         again, applied = compat.transform_sources_gni(fixed)
