@@ -414,13 +414,17 @@ def apply(project: Path) -> None:
         )
         _atomic_write_bytes(destination / name, content)
 
-    resource_dir = project / "src/chrome/android/java/res/drawable-nodpi"
-    _atomic_write_bytes(
-        resource_dir / "tihulu_tv_banner.png", (BRANDING / "tihulu_tv_banner.png").read_bytes()
-    )
-    _atomic_write_bytes(
-        resource_dir / "tihulu_tv_icon.png", (BRANDING / "tihulu_tv_icon.png").read_bytes()
-    )
+    # Brave's build command runs branding.update() before GN generation. That routine removes
+    # untracked files from Chromium's chrome/android/java/res unless the same resource is owned
+    # by Brave's android/java/res source tree. Keep an authoritative Tihulu copy on the Brave side
+    # and an immediate Chromium copy for apply->verify; branding then recopies/preserves it during
+    # every build instead of deleting it as an unknown file.
+    brave_resource_dir = project / "src/brave/android/java/res/drawable-nodpi"
+    chrome_resource_dir = project / "src/chrome/android/java/res/drawable-nodpi"
+    for name in ["tihulu_tv_banner.png", "tihulu_tv_icon.png"]:
+        data = (BRANDING / name).read_bytes()
+        _atomic_write_bytes(brave_resource_dir / name, data)
+        _atomic_write_bytes(chrome_resource_dir / name, data)
 
     for path, text in transformed.items():
         _atomic_write_text(path, text)
