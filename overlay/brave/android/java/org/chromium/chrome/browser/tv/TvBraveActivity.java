@@ -29,6 +29,8 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     private static final int CURSOR_SIZE_DP = 28;
     private static final int CURSOR_MARGIN_DP = 8;
     private static final int DPAD_REPEAT_DIVISOR = 3;
+    private static final long CURSOR_HOVER_MIN_INTERVAL_MS = 50L;
+    private static final long SELECT_LONG_PRESS_MS = 550L;
     private static final int KEY_BACK = 4;
     private static final int KEY_FORWARD = 125;
     private static final int KEY_R = 46;
@@ -50,17 +52,28 @@ public final class TvBraveActivity extends ChromeTabbedActivity
                 }
             };
 
+    private final Runnable mSelectLongPressRunnable = this::handleSelectLongPress;
+    private final Runnable mCursorHoverRunnable = this::runScheduledCursorHover;
+
     private TvNavigationMode mNavigationMode = TvNavigationMode.DPAD;
     private TvCursorState mCursorState;
     private TvCursorOverlay mCursorOverlay;
     private Dialog mBrowserBarDialog;
     private ViewGroup mRoot;
+    private KeyEvent mPendingSelectDownEvent;
+    private boolean mSelectLongPressConsumed;
     private boolean mUpLongPressConsumed;
     private boolean mTvUiInitialized;
     private boolean mTvRuntimeEnabled;
     private boolean mFullscreenObserverRegistered;
     private boolean mCursorLayoutListenerInstalled;
+    private boolean mCursorHoverPosted;
     private boolean mHtmlFullscreen;
+    private long mLastCursorHoverUptimeMs;
+    private int[] mRootLocationInWindow;
+    private int[] mPointerTargetLocationInWindow;
+    private float mPointerTargetX;
+    private float mPointerTargetY;
 
     /**
      * Chromium owns startup. Keep the TV hook deliberately inert here: no added views, no
@@ -81,6 +94,8 @@ public final class TvBraveActivity extends ChromeTabbedActivity
 
     @Override
     public void onDestroyInternal() {
+        cancelSelectTracking();
+        cancelCursorHover();
         dismissBrowserBar();
         if (mFullscreenObserverRegistered) {
             getFullscreenManager().removeObserver(mFullscreenObserver);
@@ -122,6 +137,12 @@ public final class TvBraveActivity extends ChromeTabbedActivity
             return true;
         }
 
+        // OK is the only guaranteed spare control on a six-key remote. Delay only this key until
+        // release so a long hold can switch D-pad/Cursor exactly once without also activating the
+        // focused page element. Fullscreen bypasses this entire TV layer above, so video players
+        // still receive their native D-pad/OK stream while fullscreen.
+        if (isSelectKey(event.getKeyCode()) && handleSelectKeyEvent(event)) return true;
+
         if (mNavigationMode == TvNavigationMode.CURSOR) {
             ensureCursorInitialized();
             int keyCode = event.getKeyCode();
@@ -132,12 +153,6 @@ public final class TvBraveActivity extends ChromeTabbedActivity
                     } else {
                         moveCursorForKey(keyCode, event.getRepeatCount());
                     }
-                }
-                return true;
-            }
-            if (isSelectKey(keyCode)) {
-                if (event.getAction() == KeyEvent.ACTION_UP && mCursorState != null && mRoot != null) {
-                    TvMouseDispatcher.primaryClick(mRoot, mCursorState.x(), mCursorState.y());
                 }
                 return true;
             }
@@ -167,9 +182,16 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     @Override
     public void setNavigationMode(TvNavigationMode mode) {
         mNavigationMode = mode == null ? TvNavigationMode.DPAD : mode;
-        if (mNavigationMode == TvNavigationMode.CURSOR) ensureCursorInitialized();
+        if (mNavigationMode == TvNavigationMode.CURSOR) {
+            ensureCursorInitialized();
+        } else {
+            cancelCursorHover();
+        }
         refreshTvOverlayVisibility();
-        if (!mHtmlFullscreen && mNavigationMode == TvNavigationMode.CURSOR) updateCursorOverlay();
+        if (!mHtmlFullscreen && mNavigationMode == TvNavigationMode.CURSOR) {
+            updateCursorOverlay();
+            scheduleCursorHover();
+        }
     }
 
     @Override
@@ -190,6 +212,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         if (mCursorState == null) return;
         mCursorState.center();
         updateCursorOverlay();
+        scheduleCursorHover();
     }
 
     @Override
@@ -259,6 +282,53 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         TvControlPanel.show(this, this);
     }
 
+    private boolean handleSelectKeyEvent(KeyEvent event) {
+        if (mRoot == null) return false;
+
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            if (event.getRepeatCount() > 0) {
+                return mPendingSelectDownEvent != null;
+            }
+            cancelSelectTracking();
+            mPendingSelectDownEvent = new KeyEvent(event);
+            mSelectLongPressConsumed = false;
+            mRoot.postDelayed(mSelectLongPressRunnable, SELECT_LONG_PRESS_MS);
+            return true;
+        }
+
+        if (event.getAction() != KeyEvent.ACTION_UP || mPendingSelectDownEvent == null) {
+            return false;
+        }
+
+        mRoot.removeCallbacks(mSelectLongPressRunnable);
+        KeyEvent downEvent = mPendingSelectDownEvent;
+        mPendingSelectDownEvent = null;
+        boolean wasLongPress = mSelectLongPressConsumed;
+        mSelectLongPressConsumed = false;
+        if (wasLongPress) return true;
+
+        if (mNavigationMode == TvNavigationMode.CURSOR) {
+            performCursorClick();
+            return true;
+        }
+
+        dispatchToBrowser(downEvent);
+        dispatchToBrowser(event);
+        return true;
+    }
+
+    private void handleSelectLongPress() {
+        if (mPendingSelectDownEvent == null || mSelectLongPressConsumed || mHtmlFullscreen) return;
+        mSelectLongPressConsumed = true;
+        toggleNavigationMode();
+    }
+
+    private void cancelSelectTracking() {
+        if (mRoot != null) mRoot.removeCallbacks(mSelectLongPressRunnable);
+        mPendingSelectDownEvent = null;
+        mSelectLongPressConsumed = false;
+    }
+
     private void postShowBrowserBar() {
         if (mRoot != null) mRoot.post(this::showBrowserBar);
     }
@@ -302,6 +372,8 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         mHtmlFullscreen = fullscreen;
         if (fullscreen) {
             mUpLongPressConsumed = false;
+            cancelSelectTracking();
+            cancelCursorHover();
             dismissBrowserBar();
         }
         refreshTvOverlayVisibility();
@@ -348,6 +420,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
                         mCursorState.center();
                     }
                     updateCursorOverlay();
+                    scheduleCursorHover();
                 });
     }
 
@@ -379,10 +452,8 @@ public final class TvBraveActivity extends ChromeTabbedActivity
             default:
                 return;
         }
-        // Moving the visual pointer is enough. Synthetic HOVER_MOVE on every key-repeat made
-        // complex pages do unnecessary hit-testing/style work on low-memory TV hardware. Mouse
-        // events are generated only when the user actually clicks.
         updateCursorOverlay();
+        scheduleCursorHover();
     }
 
     private void updateCursorOverlay() {
@@ -392,6 +463,85 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         mCursorOverlay.setTranslationX(mCursorState.x() - halfWidth);
         mCursorOverlay.setTranslationY(mCursorState.y() - halfHeight);
         mCursorOverlay.invalidate();
+    }
+
+    /**
+     * Chromium/Blink needs real mouse hover to reveal HTML5 player controls, but sending one event
+     * for every Android key-repeat caused unnecessary hit-testing and style work. Coalesce to at
+     * most 20 Hz while preserving the latest pointer position.
+     */
+    private void scheduleCursorHover() {
+        if (mRoot == null
+                || mCursorState == null
+                || mHtmlFullscreen
+                || mNavigationMode != TvNavigationMode.CURSOR) {
+            return;
+        }
+        long now = SystemClock.uptimeMillis();
+        long elapsed = now - mLastCursorHoverUptimeMs;
+        if (elapsed >= CURSOR_HOVER_MIN_INTERVAL_MS) {
+            cancelCursorHover();
+            dispatchCursorHover();
+            return;
+        }
+        if (mCursorHoverPosted) return;
+        mCursorHoverPosted = true;
+        mRoot.postDelayed(mCursorHoverRunnable, CURSOR_HOVER_MIN_INTERVAL_MS - elapsed);
+    }
+
+    private void runScheduledCursorHover() {
+        mCursorHoverPosted = false;
+        if (mHtmlFullscreen || mNavigationMode != TvNavigationMode.CURSOR) return;
+        dispatchCursorHover();
+    }
+
+    private void cancelCursorHover() {
+        if (mRoot != null && mCursorHoverPosted) mRoot.removeCallbacks(mCursorHoverRunnable);
+        mCursorHoverPosted = false;
+    }
+
+    private void dispatchCursorHover() {
+        mLastCursorHoverUptimeMs = SystemClock.uptimeMillis();
+        View target = getPointerTarget();
+        if (target == null || !mapCursorToTarget(target)) return;
+        TvMouseDispatcher.hover(target, mPointerTargetX, mPointerTargetY);
+    }
+
+    private void performCursorClick() {
+        if (mCursorState == null) ensureCursorInitialized();
+        View target = getPointerTarget();
+        if (target == null || !mapCursorToTarget(target)) return;
+        cancelCursorHover();
+        TvMouseDispatcher.primaryClick(target, mPointerTargetX, mPointerTargetY);
+        mLastCursorHoverUptimeMs = SystemClock.uptimeMillis();
+    }
+
+    private View getPointerTarget() {
+        Tab tab = getActivityTab();
+        if (tab == null) return null;
+        View contentView = tab.getContentView();
+        return contentView != null ? contentView : tab.getView();
+    }
+
+    /** Converts the visual cursor's DecorView coordinates into active-content local coordinates. */
+    private boolean mapCursorToTarget(View target) {
+        if (mRoot == null || mCursorState == null || target.getWidth() <= 0 || target.getHeight() <= 0) {
+            return false;
+        }
+        if (mRootLocationInWindow == null) {
+            mRootLocationInWindow = new int[2];
+            mPointerTargetLocationInWindow = new int[2];
+        }
+        mRoot.getLocationInWindow(mRootLocationInWindow);
+        target.getLocationInWindow(mPointerTargetLocationInWindow);
+        mPointerTargetX =
+                mCursorState.x() + mRootLocationInWindow[0] - mPointerTargetLocationInWindow[0];
+        mPointerTargetY =
+                mCursorState.y() + mRootLocationInWindow[1] - mPointerTargetLocationInWindow[1];
+        return mPointerTargetX >= 0
+                && mPointerTargetY >= 0
+                && mPointerTargetX < target.getWidth()
+                && mPointerTargetY < target.getHeight();
     }
 
     private void dispatchShortcut(int keyCode, int metaState) {
