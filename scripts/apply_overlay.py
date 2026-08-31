@@ -22,6 +22,7 @@ JAVA_CLASSES = [
     "TvCursorState.java",
     "TvCursorOverlay.java",
     "TvMouseDispatcher.java",
+    "TvMemoryProfile.java",
     "TvControlPanel.java",
     "TvAboutPanel.java",
     "TvBuildInfo.java",
@@ -182,6 +183,7 @@ def spatial_navigation_block() -> str:
         "            if (tvModeManager != null\n"
         "                    && tvModeManager.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION) {\n"
         '                CommandLine.getInstance().appendSwitch("enable-spatial-navigation");\n'
+        "                org.chromium.chrome.browser.tv.TvMemoryProfile.apply(getApplication());\n"
         "            }\n"
         f"            // {TV_MARKER}_SPATIAL_NAV_END\n"
     )
@@ -194,6 +196,8 @@ def transform_brave_application(text: str) -> str:
 
     if 'appendSwitch("enable-spatial-navigation")' in text:
         raise PatchError("BraveApplicationImplBase contains an unowned spatial-navigation switch")
+    if "TvMemoryProfile.apply(getApplication())" in text:
+        raise PatchError("BraveApplicationImplBase contains an unowned TV memory profile call")
 
     text = _ensure_import(
         text,
