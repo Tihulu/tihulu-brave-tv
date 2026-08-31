@@ -183,6 +183,8 @@ def main() -> int:
     if memory_profile.is_file():
         memory_text = memory_profile.read_text(encoding="utf-8")
         for token in [
+            "public final class TvMemoryProfile",
+            "public static void apply(Context context)",
             'LOW_END_DEVICE_SWITCH = "enable-low-end-device-mode"',
             "if (!Process.is64Bit()) return true;",
             "manager.isLowRamDevice()",
