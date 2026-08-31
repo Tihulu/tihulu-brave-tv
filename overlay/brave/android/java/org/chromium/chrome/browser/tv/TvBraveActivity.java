@@ -205,30 +205,37 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         TvAboutPanel.show(this, this::checkForUpdates, this::checkBraveUpstream);
     }
 
+    @Override
     public void goBack() {
         dispatchShortcut(KEY_BACK, 0);
     }
 
+    @Override
     public void goForward() {
         dispatchShortcut(KEY_FORWARD, 0);
     }
 
+    @Override
     public void reloadPage() {
         dispatchShortcut(KEY_R, KeyEvent.META_CTRL_ON);
     }
 
+    @Override
     public void previousTab() {
         dispatchShortcut(KEY_TAB, KeyEvent.META_CTRL_ON | META_SHIFT);
     }
 
+    @Override
     public void nextTab() {
         dispatchShortcut(KEY_TAB, KeyEvent.META_CTRL_ON);
     }
 
+    @Override
     public void newTab() {
         dispatchShortcut(KEY_T, KeyEvent.META_CTRL_ON);
     }
 
+    @Override
     public void closeCurrentTab() {
         dispatchShortcut(KEY_W, KeyEvent.META_CTRL_ON);
     }
@@ -239,6 +246,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         TvTabPanel.show(this, this);
     }
 
+    @Override
     public void showTvControls() {
         if (mHtmlFullscreen) return;
         TvControlPanel.show(this, this);
