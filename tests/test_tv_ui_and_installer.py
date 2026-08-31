@@ -38,6 +38,15 @@ class TvUiAndInstallerTests(unittest.TestCase):
         self.assertIn("MEM_KB", builder)
         self.assertIn("git clone https://github.com/Tihulu/tihulu-brave-tv.git", entrypoint)
 
+    def test_optional_apt_packages_require_real_candidate(self):
+        installer = (ROOT / "scripts/install-host-deps.sh").read_text(encoding="utf-8")
+        self.assertIn("package_has_candidate()", installer)
+        self.assertIn('LC_ALL=C apt-cache policy "$package"', installer)
+        self.assertIn('"$candidate" != "(none)"', installer)
+        self.assertIn("if package_has_candidate python-is-python3; then", installer)
+        self.assertIn("if package_has_candidate python3-distutils; then", installer)
+        self.assertNotIn("apt-cache show python3-distutils", installer)
+
 
 if __name__ == "__main__":
     unittest.main()
