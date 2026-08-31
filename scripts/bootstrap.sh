@@ -7,16 +7,12 @@ WORKSPACE="${BRAVE_TV_WORKSPACE:-$ROOT/.work/brave-browser}"
 RECOVERY_JOBS="${BRAVE_GCLIENT_RECOVERY_JOBS:-8}"
 RECOVERY_ATTEMPTS="${BRAVE_GCLIENT_RECOVERY_ATTEMPTS:-5}"
 RECOVERY_DELAY_SECONDS="${BRAVE_GCLIENT_RECOVERY_DELAY_SECONDS:-90}"
+HOOK_PYTHON="$ROOT/.tools/python/bin/python3"
 
 if [[ -f "$ROOT/.tools/env.sh" ]]; then
   # shellcheck disable=SC1091
   source "$ROOT/.tools/env.sh"
 fi
-
-# Current depot_tools ships a top-level python3 wrapper backed by hermetic CPython.
-# Brave still has runhooks that call `python3 -m pip`, so prefer depot_tools' official
-# escape hatch unless the caller deliberately provided another value.
-export DEPOT_TOOLS_PYTHON_BYPASS="${DEPOT_TOOLS_PYTHON_BYPASS:-1}"
 
 case "$INPUT_ARCH" in
   arm64|arm64-v8a) ARCH=arm64 ;;
@@ -30,9 +26,9 @@ for tool in git python3 node; do
   command -v "$tool" >/dev/null || { echo "Missing required tool: $tool" >&2; exit 2; }
 done
 
-if ! python3 -m pip --version >/dev/null 2>&1; then
-  echo "Brave runhooks require python3 with pip, but the active Python has no pip." >&2
-  echo "Run ./scripts/install-host-deps.sh, then retry; the installer creates an isolated build Python." >&2
+if [[ ! -x "$HOOK_PYTHON" ]] || ! "$HOOK_PYTHON" -m pip --version >/dev/null 2>&1; then
+  echo "Brave runhooks require the isolated build Python with pip at $HOOK_PYTHON." >&2
+  echo "Run ./scripts/install-host-deps.sh, then retry." >&2
   exit 2
 fi
 
@@ -91,11 +87,40 @@ fi
 cd "$WORKSPACE/src/brave"
 pnpm_run install
 
+# Brave prepends depot_tools/python-bin to child PATHs. Current depot_tools' python3
+# wrapper selects a hermetic CPython without pip, while Brave's DEPS still contains
+# hooks that execute `python3 -m pip`. Finish Brave sync without hooks, then invoke
+# gclient.py directly with our isolated pip-enabled Python and keep that Python first
+# in PATH for hook actions. This avoids modifying Brave or depot_tools source files.
+run_brave_hooks() {
+  local depot_tools="$WORKSPACE/src/brave/vendor/depot_tools"
+  local gclient_py="$depot_tools/gclient.py"
+
+  if [[ ! -f "$gclient_py" ]]; then
+    echo "Missing depot_tools gclient.py at $gclient_py." >&2
+    return 1
+  fi
+
+  echo "Running Brave/Chromium hooks with the isolated pip-enabled Python." >&2
+  (
+    cd "$WORKSPACE"
+    export GCLIENT_FILE="$WORKSPACE/.gclient"
+    export PATH="$ROOT/.tools/python/bin:$depot_tools:$depot_tools/python-bin:$PATH"
+    "$HOOK_PYTHON" "$gclient_py" runhooks
+  )
+}
+
+finish_brave_sync() {
+  pnpm_run run sync --target_os=android --target_arch="$ARCH" --nohooks
+  run_brave_hooks
+}
+
 # A first Chromium checkout launches many gclient SCM operations in parallel. Public
 # googlesource endpoints can temporarily return HTTP 429 / RESOURCE_EXHAUSTED even
 # though the large Chromium repository itself downloaded successfully. Never delete
 # the checkout in that case: resume only the missing dependencies with bounded gclient
-# parallelism and backoff, then let Brave's normal sync finish patches and hooks.
+# parallelism and backoff, then let Brave's normal sync finish patches before running
+# hooks through run_brave_hooks above.
 recover_gclient_sync() {
   local chromium_tag chromium_ref attempt delay
   chromium_tag="$(node -e 'const p=require("./package.json"); process.stdout.write(String(p.config?.projects?.chrome?.tag || ""))')"
@@ -124,11 +149,11 @@ recover_gclient_sync() {
         --revision "src@$chromium_ref" \
         --force \
         --jobs="$RECOVERY_JOBS"; then
-      echo "Bounded gclient recovery completed; finishing through Brave sync." >&2
-      if pnpm_run run sync --target_os=android --target_arch="$ARCH"; then
+      echo "Bounded gclient recovery completed; finishing Brave sync without hooks." >&2
+      if finish_brave_sync; then
         return 0
       fi
-      echo "Brave sync still failed; the next attempt will reuse everything already downloaded." >&2
+      echo "Brave sync or hooks still failed; the next attempt will reuse everything already downloaded." >&2
     else
       echo "gclient recovery failed; the next attempt will reuse everything already downloaded." >&2
     fi
@@ -146,8 +171,12 @@ if [[ -d "$WORKSPACE/src/.git" && -f "$WORKSPACE/.gclient" \
       && ! -f "$WORKSPACE/.brave_latest_successful_sync.json" ]]; then
   echo "Detected an incomplete existing Chromium checkout; resuming it instead of reinitializing." >&2
   recover_gclient_sync
-elif ! pnpm_run run init --target_os=android --target_arch="$ARCH"; then
-  recover_gclient_sync
+else
+  if pnpm_run run init --target_os=android --target_arch="$ARCH" --nohooks; then
+    run_brave_hooks
+  else
+    recover_gclient_sync
+  fi
 fi
 
 cd "$ROOT"
