@@ -1,4 +1,3 @@
-import re
 import unittest
 from pathlib import Path
 
@@ -10,28 +9,29 @@ class TvBarAttachmentTests(unittest.TestCase):
     def setUp(self):
         self.activity = ACTIVITY.read_text(encoding="utf-8")
 
-    def test_bar_never_uses_activity_add_content_view(self):
-        install = self.activity.split("private void installTvBrowserBar()", 1)[1].split(
-            "private void focusTvBrowserBar()", 1
-        )[0]
-        code_only = "\n".join(
-            line for line in install.splitlines() if not line.lstrip().startswith("//")
-        )
-        self.assertIsNone(re.search(r"\baddContentView\s*\(", code_only))
-        self.assertIsNone(re.search(r"\bsetContentView\s*\(", code_only))
+    def test_runtime_activity_never_attaches_persistent_tv_bar(self):
+        self.assertNotIn("private TvBrowserBar mTvBrowserBar", self.activity)
+        self.assertNotIn("installTvBrowserBar()", self.activity)
+        self.assertNotIn("focusTvBrowserBar()", self.activity)
+        self.assertNotIn("mRoot.addView(", self.activity)
+        self.assertNotIn("addContentView(", self.activity)
 
-    def test_bar_appends_to_existing_decor_hierarchy(self):
-        install = self.activity.split("private void installTvBrowserBar()", 1)[1].split(
-            "private void focusTvBrowserBar()", 1
+    def test_long_ok_uses_dialog_control_surface(self):
+        self.assertIn("event.getRepeatCount() > 0", self.activity)
+        long_press = self.activity.split("event.getRepeatCount() > 0", 1)[1].split(
+            "if (isSelectKey(event.getKeyCode())", 1
         )[0]
-        self.assertIn("mRoot.addView(", install)
-        self.assertIn("ViewGroup.LayoutParams.MATCH_PARENT", install)
-        self.assertIn("ViewGroup.LayoutParams.WRAP_CONTENT", install)
-        self.assertIn("mTvBrowserBar = bar;", install)
+        self.assertIn("showTvControls();", long_press)
+        self.assertNotIn("addView(", long_press)
 
-    def test_root_stub_models_direct_child_attachment(self):
-        stub = (ROOT / "tests/stubs/android/view/ViewGroup.java").read_text(encoding="utf-8")
-        self.assertIn("public void addView(View v, LayoutParams p)", stub)
+    def test_control_panel_is_dialog_backed(self):
+        panel = (
+            ROOT
+            / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvControlPanel.java"
+        ).read_text(encoding="utf-8")
+        self.assertIn("Dialog dialog = new Dialog(context);", panel)
+        self.assertIn("dialog.setContentView(column);", panel)
+        self.assertIn("dialog.show();", panel)
 
 
 if __name__ == "__main__":
