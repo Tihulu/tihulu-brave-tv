@@ -14,8 +14,9 @@ COMPAT_FILES=(
 COMPAT_MARKERS_REGEX='TIHULU_ANDROID_ADS_TOOLTIP_COMPAT|TIHULU_TV_ONBOARDING_CURSOR_COMPAT'
 CHROMIUM_COMPAT_FILES=(
   third_party/blink/renderer/core/html/resources/html.css
+  ui/android/java/src/org/chromium/ui/base/EventForwarder.java
 )
-CHROMIUM_COMPAT_MARKERS_REGEX='TIHULU_TV_FOCUS_RING_COMPAT'
+CHROMIUM_COMPAT_MARKERS_REGEX='TIHULU_TV_FOCUS_RING_COMPAT|TIHULU_TV_MOUSE_EVENT_COMPAT'
 COMPAT_APPLIED=0
 CHROMIUM_COMPAT_APPLIED=0
 
@@ -61,9 +62,8 @@ for compat_file in "${COMPAT_FILES[@]}"; do
   fi
 done
 
-# The TV focus ring modifies one tracked Chromium UA stylesheet only while building.
-# Treat an interrupted owned marker as recoverable, but never reset an unrelated local
-# Chromium edit at the same path.
+# The TV focus ring and the virtual-mouse bridge modify two tracked Chromium files only while
+# building. Treat interrupted owned markers as recoverable, but never reset unrelated local edits.
 for compat_file in "${CHROMIUM_COMPAT_FILES[@]}"; do
   if ! git -C "$CHROMIUM_ROOT" diff --quiet -- "$compat_file" \
       || ! git -C "$CHROMIUM_ROOT" diff --cached --quiet -- "$compat_file"; then
@@ -106,6 +106,11 @@ python3 "$ROOT/scripts/ensure_overlay.py" "$WORKSPACE"
 # per-key IPC to the D-pad hot path.
 CHROMIUM_COMPAT_APPLIED=1
 python3 "$ROOT/scripts/apply_chromium_tv_focus_compat.py" "$WORKSPACE"
+
+# Android 11 keeps MotionEvent.setActionButton() out of the public SDK even though Chromium needs
+# the changed-button value for mouse press/release. Expose one narrow EventForwarder method that
+# forwards Tihulu's primary-button transitions through Chromium's existing JNI mouse path.
+python3 "$ROOT/scripts/apply_chromium_tv_mouse_compat.py" "$WORKSPACE"
 
 cd "$BRAVE_CORE"
 if command -v pnpm >/dev/null 2>&1; then
