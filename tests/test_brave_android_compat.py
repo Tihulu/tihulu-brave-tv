@@ -52,6 +52,29 @@ TOOLTIPS_BUILD = """source_set("tooltips") {
 }
 """
 
+BUGGY_SOURCES_GNI = """brave_chrome_browser_deps = []
+
+if (enable_brave_ads) {
+  brave_chrome_browser_deps += [
+    "//brave/browser/brave_ads",
+    "//brave/browser/brave_ads:impl",
+    "//brave/browser/brave_ads/creatives/search_result_ad",
+    "//brave/browser/brave_ads/tabs",
+    "//brave/browser/notifications",
+    "//brave/browser/ui/webui/ads_internals",
+  ]
+}
+
+if (is_android) {
+  brave_chrome_browser_allow_circular_includes_from += [
+    "//brave/browser/android:android_browser_process",
+    "//brave/browser/android:tabs_impl",
+    "//brave/browser/android/preferences",
+    "//brave/browser/notifications",
+  ]
+}
+"""
+
 
 class BraveAndroidCompatTests(unittest.TestCase):
     def test_concrete_android_unique_ptr_is_replaced_by_interface_ownership(self):
@@ -92,6 +115,31 @@ class BraveAndroidCompatTests(unittest.TestCase):
         with self.assertRaises(compat.CompatError):
             compat.transform(BUGGY_HEADER, BUGGY_SOURCE, 'sources = ["ads_tooltips_controller.cc"]\n')
 
+    def test_ads_disabled_android_circular_allowlist_matches_deps(self):
+        fixed, applied = compat.transform_sources_gni(BUGGY_SOURCES_GNI)
+        self.assertTrue(applied)
+        self.assertIn("TIHULU_ANDROID_ADS_TOOLTIP_COMPAT_GN_BEGIN", fixed)
+        self.assertIn("if (enable_brave_ads) {", fixed)
+        self.assertIn('[ "//brave/browser/notifications" ]', fixed)
+        unconditional = """    "//brave/browser/android/preferences",
+    "//brave/browser/notifications",
+  ]
+}"""
+        self.assertNotIn(unconditional, fixed)
+
+    def test_gn_transform_is_idempotent(self):
+        fixed, _ = compat.transform_sources_gni(BUGGY_SOURCES_GNI)
+        again, applied = compat.transform_sources_gni(fixed)
+        self.assertTrue(applied)
+        self.assertEqual(fixed, again)
+
+    def test_gn_dependency_drift_fails_closed(self):
+        drifted = BUGGY_SOURCES_GNI.replace(
+            '    "//brave/browser/notifications",\n', "", 1
+        )
+        with self.assertRaises(compat.CompatError):
+            compat.transform_sources_gni(drifted)
+
     def test_arm32_build_uses_low_memory_feature_cut(self):
         builder = (ROOT / "scripts/build-debug.sh").read_text(encoding="utf-8")
         self.assertIn('if [[ "$ARCH" == "arm" ]]', builder)
@@ -103,6 +151,7 @@ class BraveAndroidCompatTests(unittest.TestCase):
     def test_compat_patch_is_ephemeral_and_unknown_changes_are_preserved(self):
         builder = (ROOT / "scripts/build-debug.sh").read_text(encoding="utf-8")
         self.assertIn('COMPAT_MARKER="TIHULU_ANDROID_ADS_TOOLTIP_COMPAT"', builder)
+        self.assertIn("browser/sources.gni", builder)
         self.assertIn("Refusing to overwrite unknown local Brave change", builder)
         self.assertIn('trap cleanup_compat EXIT INT TERM', builder)
         self.assertIn('git -C "$BRAVE_CORE" restore -- "${COMPAT_FILES[@]}"', builder)
