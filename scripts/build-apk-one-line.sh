@@ -12,6 +12,9 @@ source "$ROOT/.tools/env.sh"
 "$ROOT/scripts/check.sh"
 "$ROOT/scripts/bootstrap.sh" "$INPUT_ARCH"
 
+# Chromium's normal install-build-deps.sh entrypoint ultimately runs install-build-deps.py.
+# We invoke that Python implementation through a narrow compatibility wrapper so Pop!_OS package
+# conflicts can be handled without editing the synced Chromium checkout.
 # Chromium forces a small i386 multilib set for Android builds on x86_64 hosts. Pop!_OS can
 # expose a newer amd64 linux-libc-dev from its kernel stack while Ubuntu's i386 archive has an
 # older candidate, which APT refuses to co-install. Run the upstream installer through our narrow
