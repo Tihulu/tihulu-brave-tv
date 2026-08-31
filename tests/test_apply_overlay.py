@@ -26,6 +26,15 @@ class OverlayTests(unittest.TestCase):
 
     def _write_fixture(self):
         self._write(
+            "src/brave/package.json",
+            """{
+  "name": "brave-core",
+  "version": "1.99.7",
+  "config": {"projects": {"chrome": {"tag": "154.0.8000.1"}}}
+}
+""",
+        )
+        self._write(
             "src/brave/android/brave_java_sources.gni",
             'import("x")\n\nbrave_java_sources = [\n  "existing.java",\n]\n',
         )
@@ -76,10 +85,16 @@ public class BraveApplicationImplBase {
             self.project
             / "src/brave/android/java/org/chromium/chrome/browser/BraveApplicationImplBase.java"
         ).read_text()
+        build_info = (
+            self.project
+            / "src/brave/android/java/org/chromium/chrome/browser/tv/TvBuildInfo.java"
+        ).read_text()
         self.assertEqual(sources.count("TIHULU_TV_BROWSER_JAVA_BEGIN"), 1)
         self.assertEqual(sources.count("TvBraveActivity.java"), 1)
         self.assertEqual(sources.count("TvGitHubUpdater.java"), 1)
         self.assertEqual(sources.count("TvAboutPanel.java"), 1)
+        self.assertEqual(sources.count("TvBuildInfo.java"), 1)
+        self.assertEqual(sources.count("TvBraveUpstream.java"), 1)
         self.assertEqual(resources.count("TIHULU_TV_BROWSER_RESOURCE_BEGIN"), 1)
         self.assertEqual(resources.count("tihulu_tv_banner.png"), 1)
         self.assertEqual(resources.count("tihulu_tv_icon.png"), 1)
@@ -91,6 +106,10 @@ public class BraveApplicationImplBase {
         self.assertEqual(manifest.count('android:banner="@drawable/tihulu_tv_banner"'), 1)
         self.assertEqual(app.count("TIHULU_TV_BROWSER_SPATIAL_NAV_BEGIN"), 1)
         self.assertEqual(app.count('appendSwitch("enable-spatial-navigation")'), 1)
+        self.assertIn('BRAVE_VERSION = "1.99.7"', build_info)
+        self.assertIn('CHROMIUM_VERSION = "154.0.8000.1"', build_info)
+        self.assertNotIn('BRAVE_VERSION = "development"', build_info)
+        self.assertNotIn('CHROMIUM_VERSION = "unknown"', build_info)
         for name in MODULE.JAVA_CLASSES:
             self.assertTrue(
                 (
@@ -148,10 +167,24 @@ public class BraveApplicationImplBase {
         upgraded_manifest = manifest.read_text(encoding="utf-8")
         self.assertEqual(upgraded_sources.count("TvGitHubUpdater.java"), 1)
         self.assertEqual(upgraded_sources.count("TvAboutPanel.java"), 1)
+        self.assertEqual(upgraded_sources.count("TvBuildInfo.java"), 1)
+        self.assertEqual(upgraded_sources.count("TvBraveUpstream.java"), 1)
         self.assertEqual(upgraded_resources.count("tihulu_tv_icon.png"), 1)
         self.assertEqual(upgraded_manifest.count("android.permission.REQUEST_INSTALL_PACKAGES"), 1)
         self.assertEqual(upgraded_manifest.count('android:icon="@drawable/tihulu_tv_icon"'), 1)
         self.assertEqual(upgraded_manifest.count('android:banner="@drawable/tihulu_tv_banner"'), 1)
+
+    def test_invalid_brave_metadata_fails_before_writes(self):
+        package_json = self.project / "src/brave/package.json"
+        package_json.write_text('{"version":""}\n', encoding="utf-8")
+        sources = self.project / "src/brave/android/brave_java_sources.gni"
+        before = sources.read_text(encoding="utf-8")
+        with self.assertRaises(MODULE.PatchError):
+            MODULE.apply(self.project)
+        self.assertEqual(sources.read_text(encoding="utf-8"), before)
+        self.assertFalse(
+            (self.project / "src/brave/android/java/org/chromium/chrome/browser/tv").exists()
+        )
 
     def test_missing_anchor_fails_closed(self):
         path = self.project / "src/brave/android/brave_java_sources.gni"
