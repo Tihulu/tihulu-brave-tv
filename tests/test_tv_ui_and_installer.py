@@ -133,14 +133,14 @@ class TvUiAndInstallerTests(unittest.TestCase):
         self.assertIn("ensure_python_env()", installer)
         self.assertIn('python_env="$TOOLS/python"', installer)
         self.assertIn('"$host_python" -m venv "$python_env"', installer)
-        self.assertIn("export DEPOT_TOOLS_PYTHON_BYPASS=1", installer)
-        self.assertIn('%s/python/bin:$PATH', installer)
-        self.assertIn("python3 -m pip --version", installer)
-        self.assertIn(
-            'export DEPOT_TOOLS_PYTHON_BYPASS="${DEPOT_TOOLS_PYTHON_BYPASS:-1}"',
-            bootstrap,
-        )
-        self.assertIn("Brave runhooks require python3 with pip", bootstrap)
+        self.assertIn('HOOK_PYTHON="$ROOT/.tools/python/bin/python3"', bootstrap)
+        self.assertIn("run_brave_hooks()", bootstrap)
+        self.assertIn('gclient_py="$depot_tools/gclient.py"', bootstrap)
+        self.assertIn('pnpm_run run sync --target_os=android --target_arch="$ARCH" --nohooks', bootstrap)
+        self.assertIn('pnpm_run run init --target_os=android --target_arch="$ARCH" --nohooks', bootstrap)
+        self.assertIn('export PATH="$ROOT/.tools/python/bin:$depot_tools:$depot_tools/python-bin:$PATH"', bootstrap)
+        self.assertIn('"$HOOK_PYTHON" "$gclient_py" runhooks', bootstrap)
+        self.assertNotIn("DEPOT_TOOLS_PYTHON_BYPASS", bootstrap)
 
     def test_generated_hook_environment_cannot_expand_comment_commands(self):
         installer = (ROOT / "scripts/install-host-deps.sh").read_text(encoding="utf-8")
