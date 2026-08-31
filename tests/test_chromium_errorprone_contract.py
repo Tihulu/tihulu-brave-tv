@@ -40,6 +40,12 @@ class ChromiumErrorProneContractTests(unittest.TestCase):
         self.assertIn("public static void hover", mouse)
         self.assertIn("public static void primaryClick", mouse)
 
+    def test_build_waits_for_background_static_analysis(self):
+        builder = (ROOT / "scripts/build-debug.sh").read_text(encoding="utf-8")
+        self.assertIn("fast_local_dev_server.py --wait-for-idle", builder)
+        self.assertIn("Waiting for Chromium background static analysis", builder)
+        self.assertIn('cd "$WORKSPACE/src"', builder)
+
 
 if __name__ == "__main__":
     unittest.main()
