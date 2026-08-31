@@ -12,6 +12,7 @@ MARKERS = {
         "TIHULU_TV_BROWSER_JAVA_BEGIN",
         "TvBraveActivity.java",
         "TvCursorState.java",
+        "TvGitHubUpdater.java",
     ],
     "src/chrome/android/chrome_java_resources.gni": [
         "TIHULU_TV_BROWSER_RESOURCE_BEGIN",
@@ -22,6 +23,8 @@ MARKERS = {
         'appendSwitch("enable-spatial-navigation")',
     ],
     "src/chrome/android/java/AndroidManifest.xml": [
+        "TIHULU_TV_BROWSER_PERMISSIONS_BEGIN",
+        "android.permission.REQUEST_INSTALL_PACKAGES",
         "TIHULU_TV_BROWSER_MANIFEST_BEGIN",
         "android.intent.category.LEANBACK_LAUNCHER",
         "android.software.leanback.supports_touch",
@@ -55,6 +58,7 @@ def main() -> int:
         "TvControlPanel.java",
         "TvBrowserBar.java",
         "TvTabPanel.java",
+        "TvGitHubUpdater.java",
         "TvBraveActivity.java",
     ]:
         rel = Path("src/brave/android/java/org/chromium/chrome/browser/tv") / name
