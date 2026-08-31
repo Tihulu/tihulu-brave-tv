@@ -213,22 +213,27 @@ def main() -> int:
         if 'BRAVE_VERSION = "development"' in text or 'CHROMIUM_VERSION = "unknown"' in text:
             errors.append("TvBuildInfo.java still contains template engine versions")
 
+    resource_roots = [
+        (project / "src/brave/android/java/res/drawable-nodpi", "Brave branding source"),
+        (project / "src/chrome/android/java/res/drawable-nodpi", "Chromium branding destination"),
+    ]
     for name, label, expected in [
         ("tihulu_tv_banner.png", "TV banner", (320, 180)),
         ("tihulu_tv_icon.png", "TV icon", (256, 256)),
     ]:
-        asset = project / "src/chrome/android/java/res/drawable-nodpi" / name
-        if not asset.is_file():
-            errors.append(f"missing {label}")
-            continue
-        dimensions = _png_dimensions(asset)
-        if dimensions is None:
-            errors.append(f"invalid PNG for {label}")
-        elif dimensions != expected:
-            errors.append(
-                f"{label} must be {expected[0]}x{expected[1]}, "
-                f"found {dimensions[0]}x{dimensions[1]}"
-            )
+        for root, root_label in resource_roots:
+            asset = root / name
+            if not asset.is_file():
+                errors.append(f"missing {root_label} {label}")
+                continue
+            dimensions = _png_dimensions(asset)
+            if dimensions is None:
+                errors.append(f"invalid PNG for {root_label} {label}")
+            elif dimensions != expected:
+                errors.append(
+                    f"{root_label} {label} must be {expected[0]}x{expected[1]}, "
+                    f"found {dimensions[0]}x{dimensions[1]}"
+                )
 
     if errors:
         for error in errors:
