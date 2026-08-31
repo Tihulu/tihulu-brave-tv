@@ -35,9 +35,9 @@ jobs:
           echo '6ba3440c72f15826246dfbf3d3b34aa802a47c6303b60abd2e59ea2c35d9838d  /tmp/tihulu-brave-tv.tar.gz' | sha256sum --check --strict -
           gzip -t /tmp/tihulu-brave-tv.tar.gz
           tar -tzf /tmp/tihulu-brave-tv.tar.gz >/tmp/tihulu-brave-tv-files.txt
-          grep -qx './README.md' /tmp/tihulu-brave-tv-files.txt
-          grep -qx './scripts/check.sh' /tmp/tihulu-brave-tv-files.txt
-          grep -qx './overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBraveActivity.java' /tmp/tihulu-brave-tv-files.txt
+          grep -qx 'README.md' /tmp/tihulu-brave-tv-files.txt
+          grep -qx 'scripts/check.sh' /tmp/tihulu-brave-tv-files.txt
+          grep -qx 'overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBraveActivity.java' /tmp/tihulu-brave-tv-files.txt
           tar -xzf /tmp/tihulu-brave-tv.tar.gz -C .
 
           mkdir -p LICENSES
