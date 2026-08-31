@@ -9,8 +9,11 @@ public class KeyEvent {
             KEYCODE_L = 40;
 
     private int action, key, repeat, meta;
+    private long downTime, eventTime;
 
     public KeyEvent(long a, long b, int action, int key, int repeat, int meta) {
+        this.downTime = a;
+        this.eventTime = b;
         this.action = action;
         this.key = key;
         this.repeat = repeat;
@@ -18,6 +21,8 @@ public class KeyEvent {
     }
 
     public KeyEvent(KeyEvent other) {
+        this.downTime = other.downTime;
+        this.eventTime = other.eventTime;
         this.action = other.action;
         this.key = other.key;
         this.repeat = other.repeat;
@@ -27,6 +32,8 @@ public class KeyEvent {
     public int getAction() { return action; }
     public int getKeyCode() { return key; }
     public int getRepeatCount() { return repeat; }
+    public long getDownTime() { return downTime; }
+    public long getEventTime() { return eventTime; }
     public boolean isCtrlPressed() { return (meta & META_CTRL_ON) != 0; }
     public boolean isShiftPressed() { return false; }
 }
