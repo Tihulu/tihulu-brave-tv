@@ -54,6 +54,7 @@ BASE_PACKAGES=(
   pkg-config
   python3
   python3-setuptools
+  python3-venv
   rsync
   unzip
   xz-utils
@@ -174,12 +175,39 @@ ensure_node24() {
   ln -sfn "$prefix" "$TOOLS/node24"
 }
 
+ensure_python_env() {
+  local host_python python_env
+  host_python="${TIHULU_HOST_PYTHON:-/usr/bin/python3}"
+  if [[ ! -x "$host_python" ]]; then
+    host_python="$(command -v python3)"
+  fi
+  python_env="$TOOLS/python"
+
+  if [[ ! -x "$python_env/bin/python3" ]]; then
+    echo "Creating isolated Python environment for Brave hooks."
+    rm -rf "$python_env"
+    "$host_python" -m venv "$python_env"
+  fi
+
+  if ! "$python_env/bin/python3" -m pip --version >/dev/null 2>&1; then
+    echo "The isolated Python environment does not contain pip." >&2
+    exit 2
+  fi
+}
+
 ensure_git
 ensure_node24
+ensure_python_env
 
 mkdir -p "$TOOLS/bin"
 cat > "$ENV_FILE" <<EOF_ENV
-export PATH="$TOOLS/bin:$TOOLS/node24/bin:\$PATH"
+export PATH="$TOOLS/bin:$TOOLS/node24/bin:$TOOLS/python/bin:\$PATH"
+# depot_tools changed its top-level python3 wrapper in August 2026 to prefer a
+# hermetic CPython that intentionally has no pip. Brave's DEPS still has hooks
+# that invoke `python3 -m pip`, so use depot_tools' documented system-Python
+# escape hatch. PATH points that escape hatch at the isolated venv above rather
+# than at Ubuntu's externally-managed system environment.
+export DEPOT_TOOLS_PYTHON_BYPASS=1
 EOF_ENV
 
 # shellcheck disable=SC1090
@@ -216,11 +244,16 @@ if ! version_ge "$PNPM_VERSION" "$PNPM_MIN"; then
   echo "Brave requires pnpm >=$PNPM_MIN, but pnpm $PNPM_VERSION is active." >&2
   exit 2
 fi
+if ! python3 -m pip --version >/dev/null 2>&1; then
+  echo "Brave hooks require a Python environment with pip, but pip is unavailable." >&2
+  exit 2
+fi
 
 echo "Host dependencies ready."
 echo "Git: $(git --version)"
 echo "Node: $(node --version)"
 echo "pnpm: $(pnpm --version)"
 echo "Python: $(python3 --version)"
+echo "pip: $(python3 -m pip --version)"
 echo "Java: $(javac -version 2>&1)"
 echo "ADB: $(adb version | head -n1)"
