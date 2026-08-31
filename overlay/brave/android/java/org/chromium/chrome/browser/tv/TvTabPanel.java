@@ -15,6 +15,10 @@ import android.widget.TextView;
 
 /** TV-sized tab controls using Chromium's keyboard-shortcut path. */
 final class TvTabPanel {
+    private static final int NORMAL_BG = Color.rgb(48, 48, 52);
+    private static final int FOCUSED_BG = Color.rgb(218, 32, 40);
+    private static final int NORMAL_TEXT = Color.rgb(236, 236, 240);
+
     interface Callback {
         void previousTab();
         void nextTab();
@@ -43,9 +47,7 @@ final class TvTabPanel {
         Button create = button(context, "New tab", callback::newTab, dialog);
         Button closeTab =
                 button(context, "Close current tab", callback::closeCurrentTab, dialog);
-        Button closePanel = new Button(context);
-        closePanel.setText("Close");
-        closePanel.setTextSize(18);
+        Button closePanel = tvButton(context, "Close");
         closePanel.setOnClickListener(v -> dialog.dismiss());
 
         column.addView(previous, matchWrap(context));
@@ -68,13 +70,27 @@ final class TvTabPanel {
 
     private static Button button(
             Context context, String label, Runnable action, Dialog dialog) {
-        Button button = new Button(context);
-        button.setText(label);
-        button.setTextSize(18);
+        Button button = tvButton(context, label);
         button.setOnClickListener(
                 v -> {
                     dialog.dismiss();
                     action.run();
+                });
+        return button;
+    }
+
+    private static Button tvButton(Context context, String label) {
+        Button button = new Button(context);
+        button.setText(label);
+        button.setTextSize(18);
+        button.setTextColor(NORMAL_TEXT);
+        button.setBackgroundColor(NORMAL_BG);
+        button.setFocusable(true);
+        button.setOnFocusChangeListener(
+                (view, focused) -> {
+                    button.setBackgroundColor(focused ? FOCUSED_BG : NORMAL_BG);
+                    button.setTextColor(focused ? Color.WHITE : NORMAL_TEXT);
+                    button.setText(focused ? "▶ " + label + " ◀" : label);
                 });
         return button;
     }
