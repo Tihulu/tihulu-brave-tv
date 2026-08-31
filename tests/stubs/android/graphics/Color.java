@@ -1,1 +1,1 @@
-package android.graphics; public class Color { public static final int BLACK=0; public static final int WHITE=1; public static int rgb(int r,int g,int b){return 0;} }
+package android.graphics; public class Color { public static final int TRANSPARENT=0; public static final int BLACK=0; public static final int WHITE=1; public static int rgb(int r,int g,int b){return 0;} }
