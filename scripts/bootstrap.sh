@@ -9,10 +9,24 @@ RECOVERY_ATTEMPTS="${BRAVE_GCLIENT_RECOVERY_ATTEMPTS:-5}"
 RECOVERY_DELAY_SECONDS="${BRAVE_GCLIENT_RECOVERY_DELAY_SECONDS:-90}"
 HOOK_PYTHON="$ROOT/.tools/python/bin/python3"
 SYNC_MARKER="$WORKSPACE/.brave_latest_successful_sync.json"
+PINNED_REF_FILE="$ROOT/config/brave-core-ref"
 
 if [[ -f "$ROOT/.tools/env.sh" ]]; then
   # shellcheck disable=SC1091
   source "$ROOT/.tools/env.sh"
+fi
+
+if [[ -n "${BRAVE_CORE_REF:-}" ]]; then
+  TARGET_BRAVE_REF="$BRAVE_CORE_REF"
+elif [[ -f "$PINNED_REF_FILE" ]]; then
+  TARGET_BRAVE_REF="$(tr -d '[:space:]' < "$PINNED_REF_FILE")"
+else
+  echo "Missing pinned Brave ref: $PINNED_REF_FILE" >&2
+  exit 2
+fi
+if [[ -z "$TARGET_BRAVE_REF" ]]; then
+  echo "The pinned Brave ref is empty." >&2
+  exit 2
 fi
 
 case "$INPUT_ARCH" in
@@ -82,19 +96,86 @@ validate_positive_integer BRAVE_GCLIENT_RECOVERY_ATTEMPTS "$RECOVERY_ATTEMPTS"
 validate_positive_integer BRAVE_GCLIENT_RECOVERY_DELAY_SECONDS "$RECOVERY_DELAY_SECONDS"
 
 mkdir -p "$WORKSPACE/src"
-if [[ ! -d "$WORKSPACE/src/brave/.git" ]]; then
-  git clone https://github.com/brave/brave-core.git "$WORKSPACE/src/brave"
+BRAVE_CORE="$WORKSPACE/src/brave"
+if [[ ! -d "$BRAVE_CORE/.git" ]]; then
+  git clone https://github.com/brave/brave-core.git "$BRAVE_CORE"
 fi
 
-cd "$WORKSPACE/src/brave"
+# The Tihulu overlay intentionally edits two tracked brave-core files and adds the tv/
+# directory. Remove only those known generated changes before changing or syncing the
+# Brave ref. Any other local brave-core edit is treated as user work and blocks the build
+# rather than being silently reset.
+clean_generated_brave_overlay() {
+  local status line path unexpected=0
+  status="$(git -C "$BRAVE_CORE" status --porcelain --untracked-files=normal)"
+  [[ -z "$status" ]] && return 0
+
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    path="${line:3}"
+    case "$path" in
+      android/brave_java_sources.gni)
+        if ! grep -q "TIHULU_TV_BROWSER_JAVA_BEGIN" "$BRAVE_CORE/$path" 2>/dev/null; then
+          echo "Unexpected local change in brave-core: $path" >&2
+          unexpected=1
+        fi
+        ;;
+      android/java/org/chromium/chrome/browser/BraveApplicationImplBase.java)
+        if ! grep -q "TIHULU_TV_BROWSER_SPATIAL_NAV_BEGIN" "$BRAVE_CORE/$path" 2>/dev/null; then
+          echo "Unexpected local change in brave-core: $path" >&2
+          unexpected=1
+        fi
+        ;;
+      android/java/org/chromium/chrome/browser/tv|android/java/org/chromium/chrome/browser/tv/)
+        ;;
+      *)
+        echo "Unexpected local change in brave-core: $path" >&2
+        unexpected=1
+        ;;
+    esac
+  done <<<"$status"
+
+  if (( unexpected != 0 )); then
+    echo "Refusing to reset unknown brave-core changes. Commit/stash them or use a clean build workspace." >&2
+    return 1
+  fi
+
+  git -C "$BRAVE_CORE" restore -- android/brave_java_sources.gni \
+    android/java/org/chromium/chrome/browser/BraveApplicationImplBase.java 2>/dev/null || true
+  rm -rf "$BRAVE_CORE/android/java/org/chromium/chrome/browser/tv"
+}
+
+checkout_brave_ref() {
+  local current_tag=""
+  clean_generated_brave_overlay
+  current_tag="$(git -C "$BRAVE_CORE" describe --tags --exact-match HEAD 2>/dev/null || true)"
+
+  if [[ "$current_tag" == "$TARGET_BRAVE_REF" ]]; then
+    echo "Brave core already pinned at $TARGET_BRAVE_REF." >&2
+    return 0
+  fi
+
+  echo "Pinning Brave core to $TARGET_BRAVE_REF (override with BRAVE_CORE_REF only for deliberate testing)." >&2
+  if [[ "$TARGET_BRAVE_REF" == v* ]]; then
+    git -C "$BRAVE_CORE" fetch --force origin \
+      "refs/tags/$TARGET_BRAVE_REF:refs/tags/$TARGET_BRAVE_REF"
+    git -C "$BRAVE_CORE" checkout --detach "$TARGET_BRAVE_REF"
+  else
+    git -C "$BRAVE_CORE" fetch --force origin "$TARGET_BRAVE_REF"
+    git -C "$BRAVE_CORE" checkout --detach FETCH_HEAD
+  fi
+}
+
+checkout_brave_ref
+cd "$BRAVE_CORE"
 pnpm_run install
 
 # Brave's generated environment contains required PYTHONPATH entries such as
 # src/brave/script (for brave_chromium_utils), but it also puts depot_tools' hermetic
 # Python first. Load Brave's environment, then restore our pip-enabled Python at PATH[0].
 run_brave_hooks() {
-  local brave_env="$WORKSPACE/src/brave/build/env.sh"
-  local depot_tools="$WORKSPACE/src/brave/vendor/depot_tools"
+  local brave_env="$BRAVE_CORE/build/env.sh"
+  local depot_tools="$BRAVE_CORE/vendor/depot_tools"
   local gclient_py="$depot_tools/gclient.py"
 
   if [[ ! -f "$gclient_py" ]]; then
@@ -108,15 +189,15 @@ run_brave_hooks() {
 
   echo "Running Brave/Chromium hooks with Brave's PYTHONPATH and the isolated pip-enabled Python." >&2
   (
-    cd "$WORKSPACE/src/brave"
+    cd "$BRAVE_CORE"
     set +u
     # shellcheck disable=SC1090
     source "$brave_env"
     set -u
 
     export PATH="$ROOT/.tools/python/bin:$PATH"
-    if [[ ":${PYTHONPATH:-}:" != *":$WORKSPACE/src/brave/script:"* ]]; then
-      echo "Brave hook PYTHONPATH is missing $WORKSPACE/src/brave/script." >&2
+    if [[ ":${PYTHONPATH:-}:" != *":$BRAVE_CORE/script:"* ]]; then
+      echo "Brave hook PYTHONPATH is missing $BRAVE_CORE/script." >&2
       return 1
     fi
     if ! python3 -m pip --version >/dev/null 2>&1; then
@@ -227,5 +308,6 @@ python3 scripts/verify_overlay.py "$WORKSPACE"
 
 echo
 echo "Brave Android initialized with the TV overlay."
+echo "Pinned Brave core: $TARGET_BRAVE_REF"
 echo "Next: $WORKSPACE/src/build/install-build-deps.sh --android"
 echo "Then: ./scripts/build-debug.sh $ARCH"
