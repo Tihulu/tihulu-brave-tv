@@ -14,7 +14,6 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewGroupOverlay;
-import android.widget.Toast;
 
 import org.chromium.chrome.browser.ChromeTabbedActivity;
 import org.chromium.chrome.browser.fullscreen.FullscreenManager;
@@ -25,10 +24,11 @@ import org.chromium.chrome.browser.tab.Tab;
 public final class TvBraveActivity extends ChromeTabbedActivity
         implements TvControlPanel.Callback, TvBrowserBar.Callback, TvTabPanel.Callback {
     private static final float CURSOR_STEP_DP = 24.0f;
-    private static final float CURSOR_REPEAT_ACCELERATION = 0.18f;
-    private static final int CURSOR_MAX_ACCEL_REPEAT = 8;
+    private static final float CURSOR_REPEAT_ACCELERATION = 0.16f;
+    private static final int CURSOR_MAX_ACCEL_REPEAT = 6;
     private static final int CURSOR_SIZE_DP = 28;
     private static final int CURSOR_MARGIN_DP = 8;
+    private static final int DPAD_REPEAT_DIVISOR = 3;
     private static final int KEY_BACK = 4;
     private static final int KEY_FORWARD = 125;
     private static final int KEY_R = 46;
@@ -55,9 +55,9 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     private TvCursorOverlay mCursorOverlay;
     private Dialog mBrowserBarDialog;
     private ViewGroup mRoot;
-    private boolean mSelectLongPressConsumed;
     private boolean mUpLongPressConsumed;
     private boolean mTvUiInitialized;
+    private boolean mTvRuntimeEnabled;
     private boolean mFullscreenObserverRegistered;
     private boolean mCursorLayoutListenerInstalled;
     private boolean mHtmlFullscreen;
@@ -72,8 +72,10 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     @Override
     public void performPostInflationStartup() {
         super.performPostInflationStartup();
-        if (mTvUiInitialized || isFinishing() || !isTelevision()) return;
+        if (mTvUiInitialized || isFinishing()) return;
         mTvUiInitialized = true;
+        mTvRuntimeEnabled = isTelevision();
+        if (!mTvRuntimeEnabled) return;
         mRoot = (ViewGroup) getWindow().getDecorView();
     }
 
@@ -89,61 +91,34 @@ public final class TvBraveActivity extends ChromeTabbedActivity
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
-        if (!isTelevision()) return super.dispatchKeyEvent(event);
+        // Do not call UiModeManager for every remote event. The TV decision is cached once after
+        // Chromium finishes inflating the activity.
+        if (!mTvRuntimeEnabled) return super.dispatchKeyEvent(event);
         if (mHtmlFullscreen) return super.dispatchKeyEvent(event);
 
-        // MENU/INFO/GUIDE is a direct top-bar toggle when the remote provides one. Resolve
-        // Chromium fullscreen state only for this deliberate TV-chrome action, never for normal
-        // page D-pad events.
+        // MENU/INFO/GUIDE is a direct top-bar toggle when the remote provides one. Defer Dialog
+        // creation until the current key dispatch has completed to avoid re-entrant UI work.
         if (isControlsShortcut(event)) {
-            ensureFullscreenObserverRegistered();
-            if (mHtmlFullscreen) return super.dispatchKeyEvent(event);
-            if (event.getAction() == KeyEvent.ACTION_UP) toggleBrowserBar();
+            if (event.getAction() == KeyEvent.ACTION_UP) postToggleBrowserBar();
             return true;
         }
 
-        // A six-key remote must always be able to reach browser chrome. Hold UP from the page to
-        // open the top command bar; DPAD_DOWN or Back from the dialog returns to page content.
+        // Hold UP to request browser chrome. We only mark the hold while repeat events are arriving;
+        // the actual Dialog is opened after key-up. This keeps expensive UI creation out of the
+        // key-repeat storm. The real ACTION_UP is still forwarded to Chromium so its initial
+        // ACTION_DOWN cannot remain logically stuck.
         if (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_UP
                 && event.getAction() == KeyEvent.ACTION_DOWN
-                && event.getRepeatCount() > 0
-                && !mUpLongPressConsumed) {
+                && event.getRepeatCount() > 0) {
             mUpLongPressConsumed = true;
-            showBrowserBar();
-            return true;
-        }
-        if (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_UP
-                && event.getAction() == KeyEvent.ACTION_DOWN
-                && mUpLongPressConsumed) {
             return true;
         }
         if (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_UP
                 && event.getAction() == KeyEvent.ACTION_UP
                 && mUpLongPressConsumed) {
             mUpLongPressConsumed = false;
-            return true;
-        }
-
-        // Match common TV-browser behaviour: long OK toggles page navigation mode. Short OK
-        // remains a normal page activation/click. Only the first repeated ACTION_DOWN toggles;
-        // later repeats are consumed until key-up so one hold cannot oscillate the mode.
-        if (isSelectKey(event.getKeyCode())
-                && event.getAction() == KeyEvent.ACTION_DOWN
-                && event.getRepeatCount() > 0
-                && !mSelectLongPressConsumed) {
-            mSelectLongPressConsumed = true;
-            toggleNavigationMode();
-            return true;
-        }
-        if (isSelectKey(event.getKeyCode())
-                && event.getAction() == KeyEvent.ACTION_DOWN
-                && mSelectLongPressConsumed) {
-            return true;
-        }
-        if (isSelectKey(event.getKeyCode())
-                && event.getAction() == KeyEvent.ACTION_UP
-                && mSelectLongPressConsumed) {
-            mSelectLongPressConsumed = false;
+            super.dispatchKeyEvent(event);
+            postShowBrowserBar();
             return true;
         }
 
@@ -153,7 +128,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
             if (isDirectionKey(keyCode)) {
                 if (event.getAction() == KeyEvent.ACTION_DOWN) {
                     if (keyCode == KeyEvent.KEYCODE_DPAD_UP && isCursorAtTopEdge()) {
-                        showBrowserBar();
+                        postShowBrowserBar();
                     } else {
                         moveCursorForKey(keyCode, event.getRepeatCount());
                     }
@@ -168,8 +143,19 @@ public final class TvBraveActivity extends ChromeTabbedActivity
             }
         }
 
-        // Plain D-pad navigation remains Chromium-native. No Tihulu view creation, fullscreen
-        // manager access or Toast is inserted into this hot path.
+        // Chromium's spatial-navigation search can be relatively expensive on large modern pages,
+        // especially in a 32-bit 2 GB process. Let the first D-pad press through immediately, but
+        // thin Android's high-rate repeat stream instead of asking Blink to recompute focus dozens
+        // of times per second. ACTION_UP is never throttled.
+        if (mNavigationMode == TvNavigationMode.DPAD
+                && isDirectionKey(event.getKeyCode())
+                && event.getAction() == KeyEvent.ACTION_DOWN
+                && event.getRepeatCount() > 0
+                && event.getKeyCode() != KeyEvent.KEYCODE_DPAD_UP
+                && event.getRepeatCount() % DPAD_REPEAT_DIVISOR != 0) {
+            return true;
+        }
+
         return super.dispatchKeyEvent(event);
     }
 
@@ -189,13 +175,6 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     @Override
     public void toggleNavigationMode() {
         setNavigationMode(mNavigationMode.toggle());
-        Toast.makeText(
-                        this,
-                        mNavigationMode == TvNavigationMode.CURSOR
-                                ? "Cursor mode · D-pad moves pointer · OK clicks · Hold ↑ for bar"
-                                : "D-pad mode · arrows move page focus · OK activates · Hold ↑ for bar",
-                        Toast.LENGTH_LONG)
-                .show();
     }
 
     @Override
@@ -280,6 +259,14 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         TvControlPanel.show(this, this);
     }
 
+    private void postShowBrowserBar() {
+        if (mRoot != null) mRoot.post(this::showBrowserBar);
+    }
+
+    private void postToggleBrowserBar() {
+        if (mRoot != null) mRoot.post(this::toggleBrowserBar);
+    }
+
     private void showBrowserBar() {
         ensureFullscreenObserverRegistered();
         if (mHtmlFullscreen || isFinishing()) return;
@@ -304,7 +291,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     }
 
     private void ensureFullscreenObserverRegistered() {
-        if (mFullscreenObserverRegistered || !mTvUiInitialized || isFinishing()) return;
+        if (mFullscreenObserverRegistered || !mTvRuntimeEnabled || isFinishing()) return;
         FullscreenManager fullscreenManager = getFullscreenManager();
         fullscreenManager.addObserver(mFullscreenObserver);
         mFullscreenObserverRegistered = true;
@@ -314,7 +301,6 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     private void setTvFullscreenState(boolean fullscreen) {
         mHtmlFullscreen = fullscreen;
         if (fullscreen) {
-            mSelectLongPressConsumed = false;
             mUpLongPressConsumed = false;
             dismissBrowserBar();
         }
@@ -393,8 +379,10 @@ public final class TvBraveActivity extends ChromeTabbedActivity
             default:
                 return;
         }
+        // Moving the visual pointer is enough. Synthetic HOVER_MOVE on every key-repeat made
+        // complex pages do unnecessary hit-testing/style work on low-memory TV hardware. Mouse
+        // events are generated only when the user actually clicks.
         updateCursorOverlay();
-        if (mRoot != null) TvMouseDispatcher.hover(mRoot, mCursorState.x(), mCursorState.y());
     }
 
     private void updateCursorOverlay() {
