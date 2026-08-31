@@ -59,8 +59,11 @@ trap cleanup_compat EXIT INT TERM
 # reverted on failure. The two files were proven clean immediately above.
 COMPAT_APPLIED=1
 python3 "$ROOT/scripts/apply_brave_android_compat.py" "$WORKSPACE"
-python3 "$ROOT/scripts/apply_overlay.py" "$WORKSPACE"
-python3 "$ROOT/scripts/verify_overlay.py" "$WORKSPACE"
+
+# Do not rewrite identical Tihulu Java/resources on every retry. The fingerprinted
+# wrapper still runs the full verifier and reapplies automatically when any overlay
+# input, branding asset, or generated engine version changes.
+python3 "$ROOT/scripts/ensure_overlay.py" "$WORKSPACE"
 
 cd "$BRAVE_CORE"
 if command -v pnpm >/dev/null 2>&1; then
