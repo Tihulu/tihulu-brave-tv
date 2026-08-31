@@ -60,6 +60,13 @@ final class TvAboutPanel {
         versions.setPadding(0, dp(context, 6), 0, 0);
         column.addView(versions, matchWrap());
 
+        TextView runtime = new TextView(context);
+        runtime.setText(TvMemoryProfile.runtimeLabel(context));
+        runtime.setTextColor(Color.rgb(190, 190, 198));
+        runtime.setTextSize(15);
+        runtime.setPadding(0, dp(context, 4), 0, 0);
+        column.addView(runtime, matchWrap());
+
         TextView description = new TextView(context);
         description.setText(
                 "An unofficial community browser adapted for Google TV and Android TV. "
