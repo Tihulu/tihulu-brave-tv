@@ -78,7 +78,7 @@ final class TvControlPanel {
         column.addView(tabs, matchWrap());
 
         Button update = new Button(context);
-        update.setText("Check for updates");
+        update.setText("Check for Tihulu updates");
         update.setOnClickListener(
                 v -> {
                     dialog.dismiss();
