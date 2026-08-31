@@ -30,7 +30,11 @@ else
   exit 2
 fi
 
-"${PNPM[@]}" run build Debug \
+# Brave's Debug preset is a component build. Chromium explicitly forbids component
+# builds on Android, so use Brave's documented Static preset for local APK builds.
+# Static remains a non-official/development build but generates a monolithic Android
+# binary that GN accepts.
+"${PNPM[@]}" run build Static \
   --target_os=android \
   --target_arch="$ARCH" \
   --target_android_output_format=apk
