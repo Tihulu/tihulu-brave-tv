@@ -5,6 +5,7 @@
  */
 package org.chromium.chrome.browser.tv;
 
+import android.app.Dialog;
 import android.app.UiModeManager;
 import android.content.Context;
 import android.content.res.Configuration;
@@ -13,6 +14,7 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewGroupOverlay;
+import android.widget.Toast;
 
 import org.chromium.chrome.browser.ChromeTabbedActivity;
 import org.chromium.chrome.browser.fullscreen.FullscreenManager;
@@ -49,12 +51,15 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     private TvNavigationMode mNavigationMode = TvNavigationMode.DPAD;
     private TvCursorState mCursorState;
     private TvCursorOverlay mCursorOverlay;
+    private Dialog mBrowserBarDialog;
     private ViewGroup mRoot;
     private boolean mSelectLongPressConsumed;
+    private boolean mUpLongPressConsumed;
     private boolean mTvUiInitialized;
     private boolean mFullscreenObserverRegistered;
     private boolean mCursorLayoutListenerInstalled;
     private boolean mHtmlFullscreen;
+    private boolean mRemoteHintShown;
 
     /**
      * Chromium owns startup. Keep the TV hook deliberately inert here: no added views, no
@@ -73,6 +78,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
 
     @Override
     public void onDestroyInternal() {
+        dismissBrowserBar();
         if (mFullscreenObserverRegistered) {
             getFullscreenManager().removeObserver(mFullscreenObserver);
             mFullscreenObserverRegistered = false;
@@ -84,22 +90,40 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     public boolean dispatchKeyEvent(KeyEvent event) {
         if (!isTelevision()) return super.dispatchKeyEvent(event);
 
+        maybeShowRemoteHint(event);
+
         // Register only after a real remote interaction, never during Chromium startup.
         ensureFullscreenObserverRegistered();
         if (mHtmlFullscreen) return super.dispatchKeyEvent(event);
 
         if (isControlsShortcut(event)) {
-            if (event.getAction() == KeyEvent.ACTION_UP) showTvControls();
+            if (event.getAction() == KeyEvent.ACTION_UP) toggleBrowserBar();
             return true;
         }
 
-        // Long OK is the guaranteed remote-only escape hatch. It opens a Dialog-backed control
-        // surface and never attaches a persistent view to Chromium's DecorView hierarchy.
+        // A six-key remote must always be able to reach browser chrome. Hold UP from the page to
+        // open the top command bar; DPAD_DOWN or Back from the dialog returns to page content.
+        if (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_UP
+                && event.getAction() == KeyEvent.ACTION_DOWN
+                && event.getRepeatCount() > 0) {
+            mUpLongPressConsumed = true;
+            showBrowserBar();
+            return true;
+        }
+        if (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_UP
+                && event.getAction() == KeyEvent.ACTION_UP
+                && mUpLongPressConsumed) {
+            mUpLongPressConsumed = false;
+            return true;
+        }
+
+        // Match common TV-browser behaviour: long OK toggles page navigation mode. Short OK
+        // remains a normal page activation/click.
         if (isSelectKey(event.getKeyCode())
                 && event.getAction() == KeyEvent.ACTION_DOWN
                 && event.getRepeatCount() > 0) {
             mSelectLongPressConsumed = true;
-            showTvControls();
+            toggleNavigationMode();
             return true;
         }
         if (isSelectKey(event.getKeyCode())
@@ -113,7 +137,13 @@ public final class TvBraveActivity extends ChromeTabbedActivity
             ensureCursorInitialized();
             int keyCode = event.getKeyCode();
             if (isDirectionKey(keyCode)) {
-                if (event.getAction() == KeyEvent.ACTION_DOWN) moveCursorForKey(keyCode);
+                if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                    if (keyCode == KeyEvent.KEYCODE_DPAD_UP && isCursorAtTopEdge()) {
+                        showBrowserBar();
+                    } else {
+                        moveCursorForKey(keyCode);
+                    }
+                }
                 return true;
             }
             if (isSelectKey(keyCode)) {
@@ -138,6 +168,18 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         if (mNavigationMode == TvNavigationMode.CURSOR) ensureCursorInitialized();
         refreshTvOverlayVisibility();
         if (!mHtmlFullscreen && mNavigationMode == TvNavigationMode.CURSOR) updateCursorOverlay();
+    }
+
+    @Override
+    public void toggleNavigationMode() {
+        setNavigationMode(mNavigationMode.toggle());
+        Toast.makeText(
+                        this,
+                        mNavigationMode == TvNavigationMode.CURSOR
+                                ? "Cursor mode · D-pad moves pointer · OK clicks"
+                                : "D-pad mode · arrows move page focus · OK activates",
+                        Toast.LENGTH_LONG)
+                .show();
     }
 
     @Override
@@ -169,6 +211,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     @Override
     public void showAbout() {
         if (mHtmlFullscreen) return;
+        dismissBrowserBar();
         TvAboutPanel.show(this, this::checkForUpdates, this::checkBraveUpstream);
     }
 
@@ -210,13 +253,37 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     @Override
     public void showTabs() {
         if (mHtmlFullscreen) return;
+        dismissBrowserBar();
         TvTabPanel.show(this, this);
     }
 
     @Override
     public void showTvControls() {
         if (mHtmlFullscreen || isFinishing()) return;
+        dismissBrowserBar();
         TvControlPanel.show(this, this);
+    }
+
+    private void showBrowserBar() {
+        if (mHtmlFullscreen || isFinishing()) return;
+        if (mBrowserBarDialog != null && mBrowserBarDialog.isShowing()) return;
+        mBrowserBarDialog = TvBrowserBar.show(this, this);
+        mBrowserBarDialog.setOnDismissListener(ignored -> mBrowserBarDialog = null);
+    }
+
+    private void toggleBrowserBar() {
+        if (mBrowserBarDialog != null && mBrowserBarDialog.isShowing()) {
+            dismissBrowserBar();
+        } else {
+            showBrowserBar();
+        }
+    }
+
+    private void dismissBrowserBar() {
+        if (mBrowserBarDialog == null) return;
+        Dialog dialog = mBrowserBarDialog;
+        mBrowserBarDialog = null;
+        if (dialog.isShowing()) dialog.dismiss();
     }
 
     private void ensureFullscreenObserverRegistered() {
@@ -229,7 +296,11 @@ public final class TvBraveActivity extends ChromeTabbedActivity
 
     private void setTvFullscreenState(boolean fullscreen) {
         mHtmlFullscreen = fullscreen;
-        if (fullscreen) mSelectLongPressConsumed = false;
+        if (fullscreen) {
+            mSelectLongPressConsumed = false;
+            mUpLongPressConsumed = false;
+            dismissBrowserBar();
+        }
         refreshTvOverlayVisibility();
     }
 
@@ -275,6 +346,13 @@ public final class TvBraveActivity extends ChromeTabbedActivity
                     }
                     updateCursorOverlay();
                 });
+    }
+
+    private boolean isCursorAtTopEdge() {
+        if (mCursorState == null) return false;
+        float density = getResources().getDisplayMetrics().density;
+        float threshold = (CURSOR_MARGIN_DP + CURSOR_STEP_DP * 0.5f) * density;
+        return mCursorState.y() <= threshold;
     }
 
     private void moveCursorForKey(int keyCode) {
@@ -329,6 +407,18 @@ public final class TvBraveActivity extends ChromeTabbedActivity
 
     private boolean dispatchToBrowser(KeyEvent event) {
         return super.dispatchKeyEvent(event);
+    }
+
+    private void maybeShowRemoteHint(KeyEvent event) {
+        if (mRemoteHintShown || event.getAction() != KeyEvent.ACTION_UP) return;
+        int keyCode = event.getKeyCode();
+        if (!isDirectionKey(keyCode) && !isSelectKey(keyCode)) return;
+        mRemoteHintShown = true;
+        Toast.makeText(
+                        this,
+                        "Remote: hold ↑ for browser bar · hold OK for Cursor/D-pad",
+                        Toast.LENGTH_LONG)
+                .show();
     }
 
     private boolean isTelevision() {
