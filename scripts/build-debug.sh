@@ -55,11 +55,10 @@ cleanup_compat() {
 }
 trap cleanup_compat EXIT INT TERM
 
-# Apply narrow Brave upstream compatibility fixes before the Tihulu overlay. The
-# compatibility script is idempotent and fails closed if the pinned Brave source
-# no longer matches the audited Android link hazard.
-python3 "$ROOT/scripts/apply_brave_android_compat.py" "$WORKSPACE"
+# Mark cleanup active before patching, so even a rare partial filesystem write is
+# reverted on failure. The two files were proven clean immediately above.
 COMPAT_APPLIED=1
+python3 "$ROOT/scripts/apply_brave_android_compat.py" "$WORKSPACE"
 python3 "$ROOT/scripts/apply_overlay.py" "$WORKSPACE"
 python3 "$ROOT/scripts/verify_overlay.py" "$WORKSPACE"
 
