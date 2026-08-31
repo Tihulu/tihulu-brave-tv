@@ -27,8 +27,9 @@ public final class TvGitHubUpdaterTest {
                         + "\"browser_download_url\":\"https://github.com/Tihulu/tihulu-brave-tv/releases/download/v2/browser.apk\"}]}";
         TvGitHubUpdater.ReleaseInfo fallback = TvGitHubUpdater.parseRelease(oneApk);
         assert fallback != null;
-        assert fallback.bestApkFor("unknown") != null;
+        assert fallback.bestApkFor("unknown") == null;
         assert fallback.bestApkFor("aarch64") == null;
+        assert fallback.bestApkFor("armv7l") == null;
 
         String universalJson =
                 "{\"tag_name\":\"v2\",\"assets\":[{\"name\":\"Tihulu-TV-Browser-universal.apk\","
@@ -36,6 +37,8 @@ public final class TvGitHubUpdaterTest {
         TvGitHubUpdater.ReleaseInfo universal = TvGitHubUpdater.parseRelease(universalJson);
         assert universal != null;
         assert universal.bestApkFor("aarch64") != null;
+        assert universal.bestApkFor("armv7l") != null;
+        assert universal.bestApkFor("unknown") != null;
 
         String untrusted =
                 "{\"tag_name\":\"v3\",\"assets\":["
