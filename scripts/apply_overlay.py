@@ -19,6 +19,7 @@ JAVA_CLASSES = [
     "TvControlPanel.java",
     "TvBrowserBar.java",
     "TvTabPanel.java",
+    "TvGitHubUpdater.java",
     "TvBraveActivity.java",
 ]
 
@@ -37,22 +38,43 @@ def replace_once(text: str, needle: str, replacement: str, description: str) -> 
     return text.replace(needle, replacement, 1)
 
 
-def patch_java_sources(path: Path) -> None:
-    text = path.read_text(encoding="utf-8")
-    if f"# {TV_MARKER}_JAVA_BEGIN" in text:
-        return
-    anchor = "brave_java_sources = [\n"
+def replace_owned_block(text: str, begin: str, end: str, block: str, description: str) -> str:
+    begin_count = text.count(begin)
+    end_count = text.count(end)
+    if begin_count != 1 or end_count != 1:
+        raise PatchError(
+            f"{description}: expected exactly one owned marker pair, "
+            f"found begin={begin_count}, end={end_count}."
+        )
+    start = text.index(begin)
+    stop = text.index(end, start) + len(end)
+    if stop < len(text) and text[stop] == "\n":
+        stop += 1
+    return text[:start] + block + text[stop:]
+
+
+def java_source_block() -> str:
     entries = "".join(
         f'  "../../brave/android/java/org/chromium/chrome/browser/tv/{name}",\n'
         for name in JAVA_CLASSES
     )
-    block = (
-        anchor
-        + f"  # {TV_MARKER}_JAVA_BEGIN\n"
+    return (
+        f"  # {TV_MARKER}_JAVA_BEGIN\n"
         + entries
         + f"  # {TV_MARKER}_JAVA_END\n"
     )
-    text = replace_once(text, anchor, block, "brave_java_sources.gni")
+
+
+def patch_java_sources(path: Path) -> None:
+    text = path.read_text(encoding="utf-8")
+    begin = f"  # {TV_MARKER}_JAVA_BEGIN"
+    end = f"  # {TV_MARKER}_JAVA_END"
+    block = java_source_block()
+    if begin in text or end in text:
+        text = replace_owned_block(text, begin, end, block, "brave_java_sources.gni TV block")
+    else:
+        anchor = "brave_java_sources = [\n"
+        text = replace_once(text, anchor, anchor + block, "brave_java_sources.gni")
     path.write_text(text, encoding="utf-8")
 
 
@@ -112,50 +134,63 @@ def patch_brave_application(path: Path) -> None:
 
 def patch_manifest(path: Path) -> None:
     text = path.read_text(encoding="utf-8")
-    if f"<!-- {TV_MARKER}_MANIFEST_BEGIN -->" in text:
-        return
-
     feature_anchor = '    <uses-feature android:glEsVersion="0x00030000" />\n'
-    features = (
-        feature_anchor
-        + f"    <!-- {TV_MARKER}_FEATURES_BEGIN -->\n"
-        + '    <uses-feature android:name="android.software.leanback" android:required="true" />\n'
-        + '    <uses-feature android:name="android.hardware.faketouch" android:required="false" />\n'
-        + f"    <!-- {TV_MARKER}_FEATURES_END -->\n"
-    )
-    text = replace_once(text, feature_anchor, features, "Chromium manifest TV features")
 
-    application_anchor = (
-        '      <application android:name="{% block application_name %}'
-        'org.chromium.chrome.browser.base.SplitChromeApplication{% endblock %}"\n'
-    )
-    # Keep the application node untouched; supports_touch is component metadata below.
-    if application_anchor not in text:
-        raise PatchError("Chromium manifest application anchor moved")
+    if f"<!-- {TV_MARKER}_PERMISSIONS_BEGIN -->" not in text:
+        permissions = (
+            f"    <!-- {TV_MARKER}_PERMISSIONS_BEGIN -->\n"
+            + '    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n'
+            + f"    <!-- {TV_MARKER}_PERMISSIONS_END -->\n"
+        )
+        text = replace_once(
+            text,
+            feature_anchor,
+            permissions + feature_anchor,
+            "Chromium manifest updater permission",
+        )
 
-    activity_anchor = '        <!-- ChromeTabbedActivity related -->\n'
-    activity = (
-        f"        <!-- {TV_MARKER}_MANIFEST_BEGIN -->\n"
-        '        <activity android:name="org.chromium.chrome.browser.tv.TvBraveActivity"\n'
-        '            android:theme="@style/Theme.Chromium.TabbedMode"\n'
-        '            android:label="Tihulu TV Browser"\n'
-        '            android:banner="@drawable/tihulu_tv_banner"\n'
-        '            android:exported="true"\n'
-        '            android:launchMode="singleTask"\n'
-        '            android:hardwareAccelerated="false"\n'
-        '            android:resizeableActivity="true"\n'
-        '            android:supportsPictureInPicture="true"\n'
-        '            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|mcc|mnc|screenLayout|smallestScreenSize|uiMode|density">\n'
-        '            <meta-data android:name="android.software.leanback.supports_touch" android:value="true" />\n'
-        '            <intent-filter>\n'
-        '                <action android:name="android.intent.action.MAIN" />\n'
-        '                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />\n'
-        '            </intent-filter>\n'
-        '        </activity>\n'
-        f"        <!-- {TV_MARKER}_MANIFEST_END -->\n"
-        + activity_anchor
-    )
-    text = replace_once(text, activity_anchor, activity, "Chromium manifest activity")
+    if f"<!-- {TV_MARKER}_FEATURES_BEGIN -->" not in text:
+        features = (
+            feature_anchor
+            + f"    <!-- {TV_MARKER}_FEATURES_BEGIN -->\n"
+            + '    <uses-feature android:name="android.software.leanback" android:required="true" />\n'
+            + '    <uses-feature android:name="android.hardware.faketouch" android:required="false" />\n'
+            + f"    <!-- {TV_MARKER}_FEATURES_END -->\n"
+        )
+        text = replace_once(text, feature_anchor, features, "Chromium manifest TV features")
+
+    if f"<!-- {TV_MARKER}_MANIFEST_BEGIN -->" not in text:
+        application_anchor = (
+            '      <application android:name="{% block application_name %}'
+            'org.chromium.chrome.browser.base.SplitChromeApplication{% endblock %}"\n'
+        )
+        if application_anchor not in text:
+            raise PatchError("Chromium manifest application anchor moved")
+
+        activity_anchor = '        <!-- ChromeTabbedActivity related -->\n'
+        activity = (
+            f"        <!-- {TV_MARKER}_MANIFEST_BEGIN -->\n"
+            '        <activity android:name="org.chromium.chrome.browser.tv.TvBraveActivity"\n'
+            '            android:theme="@style/Theme.Chromium.TabbedMode"\n'
+            '            android:label="Tihulu TV Browser"\n'
+            '            android:banner="@drawable/tihulu_tv_banner"\n'
+            '            android:exported="true"\n'
+            '            android:launchMode="singleTask"\n'
+            '            android:hardwareAccelerated="false"\n'
+            '            android:resizeableActivity="true"\n'
+            '            android:supportsPictureInPicture="true"\n'
+            '            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|mcc|mnc|screenLayout|smallestScreenSize|uiMode|density">\n'
+            '            <meta-data android:name="android.software.leanback.supports_touch" android:value="true" />\n'
+            '            <intent-filter>\n'
+            '                <action android:name="android.intent.action.MAIN" />\n'
+            '                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />\n'
+            '            </intent-filter>\n'
+            '        </activity>\n'
+            f"        <!-- {TV_MARKER}_MANIFEST_END -->\n"
+            + activity_anchor
+        )
+        text = replace_once(text, activity_anchor, activity, "Chromium manifest activity")
+
     path.write_text(text, encoding="utf-8")
 
 
@@ -188,11 +223,24 @@ def preflight(required: dict[str, Path]) -> None:
     brave_app = required["Brave application"].read_text(encoding="utf-8")
     manifest = required["Chromium manifest"].read_text(encoding="utf-8")
 
+    java_begin = f"# {TV_MARKER}_JAVA_BEGIN"
+    java_end = f"# {TV_MARKER}_JAVA_END"
+    if java_begin in java_sources or java_end in java_sources:
+        if java_sources.count(java_begin) != 1 or java_sources.count(java_end) != 1:
+            raise PatchError("brave_java_sources.gni: malformed existing TV source block")
+    else:
+        _require_anchor(
+            java_sources,
+            java_begin,
+            "brave_java_sources = [\n",
+            "brave_java_sources.gni",
+        )
+
     _require_anchor(
-        java_sources, f"# {TV_MARKER}_JAVA_BEGIN", "brave_java_sources = [\n", "brave_java_sources.gni"
-    )
-    _require_anchor(
-        resources, f"# {TV_MARKER}_RESOURCE_BEGIN", "chrome_java_resources = [\n", "chrome_java_resources.gni"
+        resources,
+        f"# {TV_MARKER}_RESOURCE_BEGIN",
+        "chrome_java_resources = [\n",
+        "chrome_java_resources.gni",
     )
     if f"// {TV_MARKER}_SPATIAL_NAV_BEGIN" not in brave_app:
         for anchor, description in [
@@ -205,9 +253,16 @@ def preflight(required: dict[str, Path]) -> None:
         ]:
             if brave_app.count(anchor) != 1:
                 raise PatchError(f"{description}: upstream anchor moved")
+
+    feature_anchor = '    <uses-feature android:glEsVersion="0x00030000" />\n'
+    if f"<!-- {TV_MARKER}_PERMISSIONS_BEGIN -->" not in manifest:
+        if manifest.count(feature_anchor) != 1:
+            raise PatchError("Chromium manifest updater permission anchor moved")
+    if f"<!-- {TV_MARKER}_FEATURES_BEGIN -->" not in manifest:
+        if manifest.count(feature_anchor) != 1:
+            raise PatchError("Chromium manifest TV feature anchor moved")
     if f"<!-- {TV_MARKER}_MANIFEST_BEGIN -->" not in manifest:
         for anchor, description in [
-            ('    <uses-feature android:glEsVersion="0x00030000" />\n', "Chromium manifest TV features"),
             ('        <!-- ChromeTabbedActivity related -->\n', "Chromium manifest activity"),
             (
                 '      <application android:name="{% block application_name %}'
@@ -235,8 +290,6 @@ def apply(project: Path) -> None:
             + "\n- ".join(missing)
         )
 
-    # Validate every upstream anchor before touching the checkout. A drift failure must not
-    # leave a half-applied overlay behind.
     preflight(required)
     copy_overlay(project)
     patch_java_sources(required["java sources"])
