@@ -1,6 +1,6 @@
 # Tihulu TV Browser
 
-![Tihulu TV Browser](assets/branding/tihulu_tv_banner.png)
+![Tihulu TV Browser](assets/branding/tihulu_tv_readme_banner.png)
 
 A TV-first Google TV / Android TV browser derivative based on Brave and Chromium.
 
