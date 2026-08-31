@@ -1,1 +1,272 @@
-# tihulu-brave-tv
+# Tihulu TV Browser
+
+An experimental Google TV / Android TV interaction layer for Brave/Chromium.
+
+The goal is to keep Brave's browser engine, Shields, tab model and Chromium compatibility while adding a proper 10-foot TV input experience:
+
+- **D-pad mode** using Chromium/Blink's native spatial navigation.
+- **Cursor mode** where the remote D-pad moves a virtual mouse pointer and OK clicks.
+- **TV controls panel** for changing navigation mode, opening the address bar/keyboard and re-centering the pointer.
+- **Android TV launcher support** through `LEANBACK_LAUNCHER`.
+- TV-friendly hardware declarations so a touchscreen is not required.
+
+> [!IMPORTANT]
+> This is an **unofficial community project**. It is not affiliated with, endorsed by, or distributed by Brave Software. The app name used by this project is **Tihulu TV Browser**. Brave and Chromium trademarks belong to their respective owners.
+
+## Project status
+
+**Early MVP / development preview.** The overlay and patch tooling are implemented, but a full Brave Android build still needs to be compiled and smoke-tested on real Google TV hardware before any release should be treated as stable.
+
+### MVP scope
+
+- [x] Android TV launcher entry
+- [x] Native Chromium spatial navigation switch on TV
+- [x] D-pad / cursor navigation modes
+- [x] Virtual pointer overlay
+- [x] Remote OK-to-click in cursor mode
+- [x] TV controls dialog
+- [x] Address-bar / TV keyboard shortcut
+- [x] Pointer/mouse capable TV metadata
+- [x] Overlay verification and regression tests
+- [ ] Real-device Google TV smoke test
+- [ ] Fullscreen-video polish
+- [ ] Per-site preferred navigation mode
+- [ ] TV-optimized tab switcher
+- [ ] TV-optimized downloads UI
+- [ ] Release signing / Play TV packaging
+
+## Why use native spatial navigation?
+
+Chromium already contains a spatial-navigation mode intended for devices without a normal mouse or touchscreen, including TV-style controllers. Tihulu TV Browser enables that path on Android TV instead of injecting JavaScript into every page. This reduces page breakage and keeps focus behavior inside Blink.
+
+## Architecture
+
+This repository is intentionally a **small overlay**, not a permanent copy of the entire Chromium/Brave source tree.
+
+```text
+Tihulu TV Browser repo
+        |
+        |  scripts/bootstrap.sh
+        v
+Brave Core checkout in .work/brave-browser/src/brave
+        |
+        |  pnpm run init --target_os=android
+        v
+Brave + Chromium source checkout
+        |
+        |  scripts/apply_overlay.py
+        v
+TV Java layer + manifest/build-file integration
+        |
+        |  pnpm run build Debug --target_os=android ...
+        v
+Android TV APK
+```
+
+Keeping the TV code in a separate overlay makes Brave/Chromium updates easier to review and avoids pretending that upstream source code is licensed by this project.
+
+## Quick start (Ubuntu / Pop!_OS)
+
+A Brave/Chromium build is large. Brave documents that initialization pulls many repositories and tens of gigabytes of source code. Make sure you have substantial free disk space before starting.
+
+### 1. Install the base prerequisites
+
+Brave's current Android documentation requires Git 2.41+, Python 3 and Node.js 24+.
+
+```bash
+sudo apt update
+sudo apt install -y \
+  build-essential \
+  git \
+  python3 \
+  python-is-python3 \
+  python3-setuptools \
+  adb
+
+node --version   # should be v24 or newer
+git --version    # should be 2.41 or newer
+python3 --version
+```
+
+On newer Ubuntu-family releases `python3-distutils` may no longer exist as a separate package. Do not force-install an obsolete package if APT does not provide it.
+
+### 2. Clone this project
+
+```bash
+git clone https://github.com/Tihulu/tihulu-brave-tv.git
+cd tihulu-brave-tv
+```
+
+### 3. Bootstrap Brave for Android
+
+For a modern Google TV device, `arm64` is the usual target:
+
+```bash
+./scripts/bootstrap.sh arm64
+```
+
+This creates the Brave checkout under `.work/brave-browser/src/brave`, runs Brave's Android initialization and then applies the TV overlay.
+
+If you already have an initialized Brave checkout, skip the download and point the overlay script at its project root:
+
+```bash
+python3 scripts/apply_overlay.py /path/to/brave-browser
+```
+
+The project root is the directory that contains `src/brave` and `src/chrome` after Brave initialization.
+
+### 4. Install Chromium/Android build dependencies
+
+After Brave initialization completes:
+
+```bash
+cd .work/brave-browser
+./src/build/install-build-deps.sh --android
+cd -
+```
+
+If Brave/Chromium reports that your distribution is unsupported, Brave documents `--unsupported` as an alternative:
+
+```bash
+.work/brave-browser/src/build/install-build-deps.sh --android --unsupported
+```
+
+### 5. Build a debug APK
+
+```bash
+./scripts/build-debug.sh arm64
+```
+
+The wrapper reapplies/verifies the TV overlay first, then invokes Brave's current Android build command with APK output enabled.
+
+### 6. Connect a Google TV / Android TV device
+
+Enable **Developer options** and **USB debugging** or **Wireless debugging** on the TV.
+
+Check the connection:
+
+```bash
+adb devices
+```
+
+For wireless ADB, pair/connect using the address shown by Android TV's Wireless debugging screen.
+
+### 7. Install the APK
+
+Because Brave output filenames can change between architectures/versions, the install helper discovers the newest Brave APK:
+
+```bash
+./scripts/install-apk.sh arm64
+```
+
+Or install a known APK directly:
+
+```bash
+adb install -r /path/to/Brave*.apk
+```
+
+The TV launcher entry is **Tihulu TV Browser**.
+
+## Remote controls
+
+### D-pad mode
+
+| Input | Action |
+| --- | --- |
+| Up / Down / Left / Right | Chromium native spatial navigation |
+| OK / Enter | Activate the focused page/UI element |
+| Back | Browser back / normal Android back behavior |
+| Menu, Info or Guide | Open TV Controls |
+
+When a focused HTML text field is activated, Android's normal TV IME (for example Gboard on Google TV) is expected to open.
+
+### Cursor mode
+
+| Input | Action |
+| --- | --- |
+| Up / Down / Left / Right | Move virtual cursor |
+| OK / Enter | Mouse click at cursor position |
+| Back | Normal browser back behavior |
+| Menu, Info or Guide | Open TV Controls |
+
+The TV Controls dialog includes:
+
+- Switch between **D-pad** and **Cursor** mode.
+- **Address / Keyboard**, which sends Chrome's `Ctrl+L` shortcut so the omnibox receives focus and Android can display its keyboard.
+- **Center cursor**.
+
+External USB/Bluetooth keyboards and mice continue to use Android/Chromium's normal input paths.
+
+## Updating Brave
+
+The actual Brave/Chromium checkout is ignored by this repository. To update it:
+
+```bash
+cd .work/brave-browser/src/brave
+git pull
+pnpm run sync --target_os=android
+cd ../../../..
+python3 scripts/apply_overlay.py .work/brave-browser
+./scripts/check.sh
+```
+
+Always re-run the checks after an upstream update. The patcher deliberately fails rather than guessing if important upstream anchors have moved.
+
+## Testing
+
+Run the lightweight validation suite:
+
+```bash
+./scripts/check.sh
+```
+
+It checks:
+
+- Python overlay tests.
+- Pure-Java cursor-state tests.
+- Android Java surface compilation against minimal CI stubs to catch syntax/type regressions before a full Chromium build.
+- Shell syntax.
+- License/header expectations.
+- Required Android TV manifest markers in fixture application tests.
+- Idempotence: applying the overlay twice must not duplicate entries.
+
+A lightweight CI workflow runs these checks on every push and pull request. A separate scheduled workflow checks whether the Brave/Chromium files we patch have drifted upstream.
+
+### Real-device smoke test before release
+
+Do **not** publish a release only because CI is green. Test at least:
+
+1. Cold launch from the Google TV home screen.
+2. D-pad navigation on several structurally different sites.
+3. Text input and on-screen keyboard.
+4. Cursor movement and click routing.
+5. Back navigation and tab behavior.
+6. Fullscreen HTML5 video and exit from fullscreen.
+7. A USB/Bluetooth mouse and keyboard.
+8. App suspend/resume and process restart.
+9. Memory pressure after multiple tabs.
+10. A TV with only the minimal Google TV remote buttons.
+
+See [`docs/TESTING.md`](docs/TESTING.md).
+
+## Licensing
+
+Original code in this repository is licensed under **GNU AGPL-3.0-only** unless a file says otherwise.
+
+That does **not** relicense Brave or Chromium:
+
+- Brave Core is primarily **MPL-2.0**.
+- Chromium contains BSD-style and many other third-party licenses.
+- Files modified inside an initialized upstream checkout retain the license notices and obligations of those upstream files/components.
+
+See [`docs/LICENSING.md`](docs/LICENSING.md) and [`NOTICE.md`](NOTICE.md).
+
+## Trademark note
+
+Do not ship Brave logos, Brave store artwork, or imply that an unofficial build is an official Brave product. Use independent branding for distributed builds unless you have the necessary permission.
+
+## Security
+
+Browser forks inherit an unusually large attack surface. Keep Brave/Chromium current, do not disable sandboxing, Site Isolation, Safe Browsing/Brave security mechanisms merely to make a TV feature work, and treat renderer/browser-process crashes as release blockers.
+
+See [`SECURITY.md`](SECURITY.md).

@@ -1,0 +1,1 @@
+package android.view; public class MotionEvent { public static final int ACTION_HOVER_MOVE=7,ACTION_DOWN=0,ACTION_UP=1; public static MotionEvent obtain(long a,long b,int c,float d,float e,int f){return new MotionEvent();} public void setSource(int s){} public void recycle(){} }

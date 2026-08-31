@@ -1,0 +1,12 @@
+.work/
+out/
+*.apk
+*.aab
+*.apks
+*.log
+__pycache__/
+.pytest_cache/
+*.pyc
+.idea/
+.vscode/
+.DS_Store

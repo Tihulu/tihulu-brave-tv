@@ -1,0 +1,32 @@
+name: Bug report
+description: Report a reproducible TV/browser regression
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: textarea
+    attributes:
+      label: TV / device
+      description: Model, Android/Google TV version, remote type.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Build
+      description: Commit SHA and Brave/Chromium version if known.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Actual behavior / logs
+    validations:
+      required: true

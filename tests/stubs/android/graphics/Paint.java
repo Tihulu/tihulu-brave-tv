@@ -1,0 +1,1 @@
+package android.graphics; public class Paint { public static final int ANTI_ALIAS_FLAG=1; public enum Style { FILL } public Paint(int f){} public void setStyle(Style s){} public void setColor(int c){} }
