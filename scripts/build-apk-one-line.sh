@@ -38,24 +38,13 @@ if [[ -z "${JAVA_OPTS:-}" ]]; then
 fi
 "$ROOT/scripts/build-debug.sh" "$INPUT_ARCH"
 
-case "$INPUT_ARCH" in
-  arm64|arm64-v8a) ARCH_NAME=arm64 ;;
-  arm|armeabi-v7a) ARCH_NAME=arm ;;
-  x64|x86_64) ARCH_NAME=x64 ;;
-  x86) ARCH_NAME=x86 ;;
-  *) echo "Unsupported architecture: $INPUT_ARCH" >&2; exit 2 ;;
-esac
-
-mapfile -t APKS < <(
-  find "$WORKSPACE/src/out" -type f -path "*/android_*${ARCH_NAME}*/apks/*.apk" \
-    -iname '*Brave*.apk' -printf '%T@ %p\n' 2>/dev/null | sort -nr | cut -d' ' -f2-
-)
-if (( ${#APKS[@]} == 0 )); then
-  echo "Build finished but no Brave APK was found under $WORKSPACE/src/out." >&2
+# Do not infer ABI from an output-directory substring: an ARM32 search such as "*arm*"
+# can also match an ARM64 output. Inspect the APK's lib/<abi>/ entries instead.
+if ! APK="$(python3 "$ROOT/scripts/find_apk.py" "$WORKSPACE/src/out" "$INPUT_ARCH")"; then
+  echo "Build finished but no APK matching target architecture '$INPUT_ARCH' was found." >&2
   exit 1
 fi
 
-APK="${APKS[0]}"
 if ! unzip -tq "$APK" >/dev/null; then
   echo "Build produced an invalid or truncated APK: $APK" >&2
   exit 1
