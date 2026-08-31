@@ -14,7 +14,8 @@ class ChromiumLifecycleContractTests(unittest.TestCase):
         self.assertNotIn("public void onCreate(", activity)
         self.assertIn("public void performPostInflationStartup()", activity)
         self.assertIn("super.performPostInflationStartup();", activity)
-        self.assertIn("mTvUiInitialized || isFinishing() || !isTelevision()", activity)
+        self.assertIn("mTvUiInitialized || isFinishing()", activity)
+        self.assertIn("mTvRuntimeEnabled = isTelevision();", activity)
 
         startup = activity.split("public void performPostInflationStartup()", 1)[1].split(
             "public void onDestroyInternal()", 1
