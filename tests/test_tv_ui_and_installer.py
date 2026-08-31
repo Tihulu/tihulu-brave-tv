@@ -22,6 +22,30 @@ class TvUiAndInstallerTests(unittest.TestCase):
         self.assertIn("event.getRepeatCount() > 0", text)
         self.assertIn("focusTvBrowserBar();", text)
 
+    def test_branding_surfaces_are_wired(self):
+        panel = (
+            ROOT
+            / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvControlPanel.java"
+        ).read_text(encoding="utf-8")
+        about = (
+            ROOT
+            / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvAboutPanel.java"
+        ).read_text(encoding="utf-8")
+        activity = (
+            ROOT
+            / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBraveActivity.java"
+        ).read_text(encoding="utf-8")
+        patcher = (ROOT / "scripts/apply_overlay.py").read_text(encoding="utf-8")
+        self.assertIn('about.setText("About Tihulu TV Browser")', panel)
+        self.assertIn('title.setText("Tihulu TV Browser")', about)
+        self.assertIn('engine.setText("Based on Brave & Chromium")', about)
+        self.assertIn("R.drawable.tihulu_tv_icon", about)
+        self.assertIn("TvAboutPanel.show(this, this::checkForUpdates);", activity)
+        self.assertIn('android:icon="@drawable/tihulu_tv_icon"', patcher)
+        self.assertIn('android:banner="@drawable/tihulu_tv_banner"', patcher)
+        self.assertTrue((ROOT / "assets/branding/tihulu_tv_icon.png").is_file())
+        self.assertTrue((ROOT / "assets/branding/tihulu_tv_banner.png").is_file())
+
     def test_github_update_button_downloads_release_apk(self):
         panel = (
             ROOT
