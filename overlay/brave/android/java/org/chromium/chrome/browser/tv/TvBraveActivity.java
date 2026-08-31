@@ -17,17 +17,26 @@ import android.view.ViewGroupOverlay;
 
 import org.chromium.chrome.browser.ChromeTabbedActivity;
 
-/** Chrome/Brave tabbed activity with an input layer suitable for Android TV remotes. */
+/** Chrome/Brave tabbed activity with a TV-first input and browser-control layer. */
 public final class TvBraveActivity extends ChromeTabbedActivity
-        implements TvControlPanel.Callback {
+        implements TvControlPanel.Callback, TvBrowserBar.Callback, TvTabPanel.Callback {
     private static final float CURSOR_STEP_DP = 32.0f;
     private static final int CURSOR_SIZE_DP = 28;
     private static final int CURSOR_MARGIN_DP = 8;
+    private static final int KEY_BACK = 4;
+    private static final int KEY_FORWARD = 125;
+    private static final int KEY_R = 46;
+    private static final int KEY_TAB = 61;
+    private static final int KEY_T = 48;
+    private static final int KEY_W = 51;
+    private static final int META_SHIFT = 1;
 
     private TvNavigationMode mNavigationMode = TvNavigationMode.DPAD;
     private TvCursorState mCursorState;
     private TvCursorOverlay mCursorOverlay;
+    private TvBrowserBar mTvBrowserBar;
     private ViewGroup mRoot;
+    private boolean mSelectLongPressConsumed;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -35,7 +44,11 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         if (!isTelevision()) return;
 
         mRoot = (ViewGroup) getWindow().getDecorView();
-        mRoot.post(this::initializeCursor);
+        mRoot.post(
+                () -> {
+                    initializeCursor();
+                    installTvBrowserBar();
+                });
         mRoot.addOnLayoutChangeListener(
                 (view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
                     if (mCursorState == null) return;
@@ -58,6 +71,20 @@ public final class TvBraveActivity extends ChromeTabbedActivity
 
         if (isControlsShortcut(event)) {
             if (event.getAction() == KeyEvent.ACTION_UP) showTvControls();
+            return true;
+        }
+
+        if (isSelectKey(event.getKeyCode())
+                && event.getAction() == KeyEvent.ACTION_DOWN
+                && event.getRepeatCount() > 0) {
+            mSelectLongPressConsumed = true;
+            focusTvBrowserBar();
+            return true;
+        }
+        if (isSelectKey(event.getKeyCode())
+                && event.getAction() == KeyEvent.ACTION_UP
+                && mSelectLongPressConsumed) {
+            mSelectLongPressConsumed = false;
             return true;
         }
 
@@ -95,32 +122,14 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         if (mNavigationMode == TvNavigationMode.CURSOR) {
             updateCursorOverlay();
         }
+        if (mTvBrowserBar != null) {
+            mTvBrowserBar.refreshMode(mNavigationMode);
+        }
     }
 
     @Override
     public void focusAddressBar() {
-        if (mRoot == null) return;
-        mRoot.post(
-                () -> {
-                    long now = SystemClock.uptimeMillis();
-                    int meta = KeyEvent.META_CTRL_ON;
-                    dispatchToBrowser(
-                            new KeyEvent(
-                                    now,
-                                    now,
-                                    KeyEvent.ACTION_DOWN,
-                                    KeyEvent.KEYCODE_L,
-                                    0,
-                                    meta));
-                    dispatchToBrowser(
-                            new KeyEvent(
-                                    now,
-                                    SystemClock.uptimeMillis(),
-                                    KeyEvent.ACTION_UP,
-                                    KeyEvent.KEYCODE_L,
-                                    0,
-                                    meta));
-                });
+        dispatchShortcut(KeyEvent.KEYCODE_L, KeyEvent.META_CTRL_ON);
     }
 
     @Override
@@ -128,6 +137,62 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         if (mCursorState == null) return;
         mCursorState.center();
         updateCursorOverlay();
+    }
+
+    public void goBack() {
+        dispatchShortcut(KEY_BACK, 0);
+    }
+
+    public void goForward() {
+        dispatchShortcut(KEY_FORWARD, 0);
+    }
+
+    public void reloadPage() {
+        dispatchShortcut(KEY_R, KeyEvent.META_CTRL_ON);
+    }
+
+    public void previousTab() {
+        dispatchShortcut(KEY_TAB, KeyEvent.META_CTRL_ON | META_SHIFT);
+    }
+
+    public void nextTab() {
+        dispatchShortcut(KEY_TAB, KeyEvent.META_CTRL_ON);
+    }
+
+    public void newTab() {
+        dispatchShortcut(KEY_T, KeyEvent.META_CTRL_ON);
+    }
+
+    public void closeCurrentTab() {
+        dispatchShortcut(KEY_W, KeyEvent.META_CTRL_ON);
+    }
+
+    @Override
+    public void showTabs() {
+        TvTabPanel.show(this, this);
+    }
+
+    public void showTvControls() {
+        TvControlPanel.show(this, this);
+    }
+
+    private void installTvBrowserBar() {
+        if (mTvBrowserBar != null) return;
+        mTvBrowserBar = new TvBrowserBar(this, this);
+        addContentView(
+                mTvBrowserBar,
+                new ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        mTvBrowserBar.refreshMode(mNavigationMode);
+    }
+
+    private void focusTvBrowserBar() {
+        if (mTvBrowserBar == null) {
+            installTvBrowserBar();
+        }
+        if (mTvBrowserBar != null) {
+            mTvBrowserBar.focusPrimaryAction();
+        }
     }
 
     private void initializeCursor() {
@@ -179,8 +244,22 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         mCursorOverlay.invalidate();
     }
 
-    private void showTvControls() {
-        TvControlPanel.show(this, this);
+    private void dispatchShortcut(int keyCode, int metaState) {
+        if (mRoot == null) return;
+        mRoot.post(
+                () -> {
+                    long now = SystemClock.uptimeMillis();
+                    dispatchToBrowser(
+                            new KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0, metaState));
+                    dispatchToBrowser(
+                            new KeyEvent(
+                                    now,
+                                    SystemClock.uptimeMillis(),
+                                    KeyEvent.ACTION_UP,
+                                    keyCode,
+                                    0,
+                                    metaState));
+                });
     }
 
     private boolean dispatchToBrowser(KeyEvent event) {
@@ -191,6 +270,10 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         UiModeManager manager = (UiModeManager) getSystemService(Context.UI_MODE_SERVICE);
         return manager != null
                 && manager.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION;
+    }
+
+    private static int dp(Context context, int value) {
+        return Math.round(value * context.getResources().getDisplayMetrics().density);
     }
 
     private static boolean isDirectionKey(int keyCode) {

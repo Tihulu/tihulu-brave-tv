@@ -53,6 +53,8 @@ def main() -> int:
         "TvCursorOverlay.java",
         "TvMouseDispatcher.java",
         "TvControlPanel.java",
+        "TvBrowserBar.java",
+        "TvTabPanel.java",
         "TvBraveActivity.java",
     ]:
         rel = Path("src/brave/android/java/org/chromium/chrome/browser/tv") / name

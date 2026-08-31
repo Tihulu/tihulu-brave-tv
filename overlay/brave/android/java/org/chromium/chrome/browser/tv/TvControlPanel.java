@@ -9,7 +9,6 @@ import android.app.Dialog;
 import android.content.Context;
 import android.graphics.Color;
 import android.view.Gravity;
-import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.LinearLayout;
@@ -22,6 +21,7 @@ final class TvControlPanel {
         void setNavigationMode(TvNavigationMode mode);
         void focusAddressBar();
         void centerCursor();
+        void showTabs();
     }
 
     private TvControlPanel() {}
@@ -52,13 +52,22 @@ final class TvControlPanel {
         column.addView(mode, matchWrap());
 
         Button keyboard = new Button(context);
-        keyboard.setText("Address / Keyboard");
+        keyboard.setText("Search / Address / Keyboard");
         keyboard.setOnClickListener(
                 v -> {
                     dialog.dismiss();
                     callback.focusAddressBar();
                 });
         column.addView(keyboard, matchWrap());
+
+        Button tabs = new Button(context);
+        tabs.setText("Tabs");
+        tabs.setOnClickListener(
+                v -> {
+                    dialog.dismiss();
+                    callback.showTabs();
+                });
+        column.addView(tabs, matchWrap());
 
         Button center = new Button(context);
         center.setText("Center cursor");
@@ -72,13 +81,13 @@ final class TvControlPanel {
 
         dialog.setContentView(column);
         if (dialog.getWindow() != null) {
-            dialog.getWindow().setLayout(dp(context, 520), ViewGroup.LayoutParams.WRAP_CONTENT);
+            dialog.getWindow().setLayout(dp(context, 560), ViewGroup.LayoutParams.WRAP_CONTENT);
         }
         dialog.setOnShowListener(
                 ignored -> {
                     if (dialog.getWindow() != null) {
                         dialog.getWindow().setLayout(
-                                dp(context, 520), ViewGroup.LayoutParams.WRAP_CONTENT);
+                                dp(context, 560), ViewGroup.LayoutParams.WRAP_CONTENT);
                     }
                     mode.requestFocus();
                 });

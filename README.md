@@ -6,6 +6,7 @@ The goal is to keep Brave's browser engine, Shields, tab model and Chromium comp
 
 - **D-pad mode** using Chromium/Blink's native spatial navigation.
 - **Cursor mode** where the remote D-pad moves a virtual mouse pointer and OK clicks.
+- **TV-first browser bar** with large Back, Forward, Reload, Search/Address, Tabs and TV Controls actions.
 - **TV controls panel** for changing navigation mode, opening the address bar/keyboard and re-centering the pointer.
 - **Android TV launcher support** through `LEANBACK_LAUNCHER`.
 - TV-friendly hardware declarations so a touchscreen is not required.
@@ -24,6 +25,8 @@ The goal is to keep Brave's browser engine, Shields, tab model and Chromium comp
 - [x] D-pad / cursor navigation modes
 - [x] Virtual pointer overlay
 - [x] Remote OK-to-click in cursor mode
+- [x] Always-visible TV browser bar with large focus targets
+- [x] TV tab-control panel
 - [x] TV controls dialog
 - [x] Address-bar / TV keyboard shortcut
 - [x] Pointer/mouse capable TV metadata
@@ -31,7 +34,8 @@ The goal is to keep Brave's browser engine, Shields, tab model and Chromium comp
 - [ ] Real-device Google TV smoke test
 - [ ] Fullscreen-video polish
 - [ ] Per-site preferred navigation mode
-- [ ] TV-optimized tab switcher
+- [x] TV tab switcher controls (previous/next/new/close)
+- [ ] Rich tab cards with live titles/thumbnails
 - [ ] TV-optimized downloads UI
 - [ ] Release signing / Play TV packaging
 
@@ -65,13 +69,42 @@ Android TV APK
 
 Keeping the TV code in a separate overlay makes Brave/Chromium updates easier to review and avoids pretending that upstream source code is licensed by this project.
 
-## Quick start (Ubuntu / Pop!_OS)
+## One-line APK build (Ubuntu / Pop!_OS / Debian)
+
+For a normal 64-bit Google TV target (`arm64`), the supported one-line host setup + build path is:
+
+```bash
+sudo apt-get update && sudo apt-get install -y curl && curl -fsSL https://raw.githubusercontent.com/Tihulu/tihulu-brave-tv/main/install.sh | bash
+```
+
+This installs the required host packages, ensures Git 2.41+, installs a checksum-verified compatible Node.js 24 toolchain and pnpm >=11.9.0 when needed, initializes Brave/Chromium, runs Chromium's Android dependency installer, applies/verifies the TV overlay and builds a Debug APK.
+
+Useful variants:
+
+```bash
+# x86_64 Android target
+curl -fsSL https://raw.githubusercontent.com/Tihulu/tihulu-brave-tv/main/install.sh | ARCH=x64 bash
+
+# Build and install to a connected adb TV
+curl -fsSL https://raw.githubusercontent.com/Tihulu/tihulu-brave-tv/main/install.sh | INSTALL_TO_TV=1 bash
+```
+
+> [!NOTE]
+> The one-line command automates setup; it does not make Chromium small. Brave initialization downloads a very large source/dependency tree and the full compile can take a long time.
+
+## Manual build (Ubuntu / Pop!_OS / Debian)
 
 A Brave/Chromium build is large. Brave documents that initialization pulls many repositories and tens of gigabytes of source code. Make sure you have substantial free disk space before starting.
 
-### 1. Install the base prerequisites
+### 1. Install the host prerequisites
 
-Brave's current Android documentation requires Git 2.41+, Python 3 and Node.js 24+.
+Brave's current Android tooling requires Git 2.41+, Python 3, Node.js >=24.16.0 and <25, and pnpm >=11.9.0. You can let this repository manage those requirements with:
+
+```bash
+./scripts/install-host-deps.sh
+```
+
+For a fully manual setup:
 
 ```bash
 sudo apt update
@@ -83,7 +116,7 @@ sudo apt install -y \
   python3-setuptools \
   adb
 
-node --version   # should be v24 or newer
+node --version   # should be >=24.16.0 and <25
 git --version    # should be 2.41 or newer
 python3 --version
 ```
@@ -175,6 +208,7 @@ The TV launcher entry is **Tihulu TV Browser**.
 | --- | --- |
 | Up / Down / Left / Right | Chromium native spatial navigation |
 | OK / Enter | Activate the focused page/UI element |
+| Long-press OK | Focus the TV browser bar |
 | Back | Browser back / normal Android back behavior |
 | Menu, Info or Guide | Open TV Controls |
 
@@ -186,13 +220,17 @@ When a focused HTML text field is activated, Android's normal TV IME (for exampl
 | --- | --- |
 | Up / Down / Left / Right | Move virtual cursor |
 | OK / Enter | Mouse click at cursor position |
+| Long-press OK | Focus the TV browser bar |
 | Back | Normal browser back behavior |
 | Menu, Info or Guide | Open TV Controls |
+
+The always-visible TV browser bar contains large focusable actions for **Back**, **Forward**, **Reload**, **Search / Address**, **Tabs** and **TV Controls**. It deliberately uses stable Android/Chromium input paths rather than depending on private Brave toolbar APIs.
 
 The TV Controls dialog includes:
 
 - Switch between **D-pad** and **Cursor** mode.
 - **Address / Keyboard**, which sends Chrome's `Ctrl+L` shortcut so the omnibox receives focus and Android can display its keyboard.
+- **Tabs**, with previous/next/new/close-current actions.
 - **Center cursor**.
 
 External USB/Bluetooth keyboards and mice continue to use Android/Chromium's normal input paths.
