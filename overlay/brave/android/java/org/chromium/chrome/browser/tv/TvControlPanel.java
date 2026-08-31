@@ -22,6 +22,7 @@ final class TvControlPanel {
         void focusAddressBar();
         void centerCursor();
         void showTabs();
+        void checkForUpdates();
     }
 
     private TvControlPanel() {}
@@ -68,6 +69,15 @@ final class TvControlPanel {
                     callback.showTabs();
                 });
         column.addView(tabs, matchWrap());
+
+        Button update = new Button(context);
+        update.setText("Check for updates");
+        update.setOnClickListener(
+                v -> {
+                    dialog.dismiss();
+                    callback.checkForUpdates();
+                });
+        column.addView(update, matchWrap());
 
         Button center = new Button(context);
         center.setText("Center cursor");
