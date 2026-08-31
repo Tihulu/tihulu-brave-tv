@@ -15,7 +15,16 @@ class ChromiumLifecycleContractTests(unittest.TestCase):
         self.assertIn("public void performPostInflationStartup()", activity)
         self.assertIn("super.performPostInflationStartup();", activity)
         self.assertIn("mTvUiInitialized || isFinishing() || !isTelevision()", activity)
-        self.assertIn("mRoot.post(this::installTvBrowserBar);", activity)
+
+        startup = activity.split("public void performPostInflationStartup()", 1)[1].split(
+            "public void onDestroyInternal()", 1
+        )[0]
+        self.assertIn("mRoot = (ViewGroup) getWindow().getDecorView();", startup)
+        self.assertNotIn("addView(", startup)
+        self.assertNotIn("addOnLayoutChangeListener", startup)
+        self.assertNotIn("getFullscreenManager()", startup)
+        self.assertNotIn("ensureCursorInitialized()", startup)
+        self.assertNotIn("TvControlPanel.show", startup)
 
     def test_tv_activity_uses_supported_destroy_hook_with_upstream_visibility(self):
         activity = (
