@@ -12,17 +12,23 @@ source "$ROOT/.tools/env.sh"
 "$ROOT/scripts/check.sh"
 "$ROOT/scripts/bootstrap.sh" "$INPUT_ARCH"
 
-# Chromium's dependency helper installs the large platform-specific dependency set
-# after init. Pop!_OS is Ubuntu-derived but may be rejected by Chromium's distro gate.
-# Use --unsupported there while keeping the normal path for Ubuntu and Debian.
+# Chromium forces a small i386 multilib set for Android builds on x86_64 hosts. Pop!_OS can
+# expose a newer amd64 linux-libc-dev from its kernel stack while Ubuntu's i386 archive has an
+# older candidate, which APT refuses to co-install. Run the upstream installer through our narrow
+# compatibility wrapper: it preserves every other dependency and only omits that one conflicting
+# i386 kernel-UAPI package when the mismatch is actually detected. Never downgrade Pop's amd64
+# linux-libc-dev automatically.
+DEPS_INSTALLER="$WORKSPACE/src/build/install-build-deps.py"
+DEPS_WRAPPER="$ROOT/scripts/install_chromium_build_deps.py"
+DEPS_ARGS=(--android --no-syms --no-chromeos-fonts --no-backwards-compatible --no-prompt)
 # shellcheck disable=SC1091
 source /etc/os-release
 if [[ "${ID:-}" == "pop" ]]; then
-  "$WORKSPACE/src/build/install-build-deps.sh" --android --unsupported
+  python3 "$DEPS_WRAPPER" "$DEPS_INSTALLER" "${DEPS_ARGS[@]}" --unsupported
 else
-  if ! "$WORKSPACE/src/build/install-build-deps.sh" --android; then
+  if ! python3 "$DEPS_WRAPPER" "$DEPS_INSTALLER" "${DEPS_ARGS[@]}"; then
     echo "Standard Chromium dependency install failed; retrying with --unsupported." >&2
-    "$WORKSPACE/src/build/install-build-deps.sh" --android --unsupported
+    python3 "$DEPS_WRAPPER" "$DEPS_INSTALLER" "${DEPS_ARGS[@]}" --unsupported
   fi
 fi
 
