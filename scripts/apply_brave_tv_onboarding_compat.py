@@ -53,7 +53,6 @@ def _is_applied(text: str) -> bool:
         "installTihuluTvCursor();",
         "public boolean dispatchKeyEvent(KeyEvent event)",
         "TvMouseDispatcher.primaryClick",
-        "TvMouseDispatcher.hover",
         "KEYCODE_DPAD_CENTER",
     ]
     missing = [token for token in required if token not in text]
@@ -61,6 +60,8 @@ def _is_applied(text: str) -> bool:
         raise CompatError(
             "Onboarding cursor markers exist but the patch body drifted: " + ", ".join(missing)
         )
+    if "TvMouseDispatcher.hover" in text:
+        raise CompatError("Onboarding cursor patch unexpectedly emits synthetic hover events")
     return True
 
 
@@ -158,7 +159,6 @@ def transform(text: str) -> tuple[str, bool]:
                     state.resize(root.getWidth(), root.getHeight());
                     state.center();
                     updateTihuluTvCursor(state, overlay);
-                    TvMouseDispatcher.hover(root, state.x(), state.y());
                 }});
     }}
 
@@ -190,7 +190,6 @@ def transform(text: str) -> tuple[str, bool]:
                         return false;
                 }}
                 updateTihuluTvCursor(state, overlay);
-                TvMouseDispatcher.hover(root, state.x(), state.y());
             }}
             return true;
         }}
@@ -263,7 +262,7 @@ def apply(project: Path) -> None:
     _atomic_write_text(path, transformed)
     if applied:
         print(
-            "Brave TV onboarding compatibility: D-pad now drives a visible virtual cursor; OK/select clicks it."
+            "Brave TV onboarding compatibility: D-pad drives the visible cursor; OK/select clicks; synthetic hover is disabled for low-end stability."
         )
 
 
