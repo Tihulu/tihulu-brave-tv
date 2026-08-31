@@ -102,10 +102,9 @@ if [[ ! -d "$BRAVE_CORE/.git" ]]; then
 fi
 
 # The Tihulu overlay intentionally edits two tracked brave-core files, adds the tv/
-# directory, and stages two branding resources under Brave's Android resource tree so
-# Brave's own branding copier preserves them. Remove only those known generated changes
-# before changing/syncing the Brave ref. Any other local brave-core edit is treated as
-# user work and blocks the build rather than being silently reset.
+# directory and adds two generated Android branding files. Remove only those known
+# generated changes before changing or syncing the Brave ref. Any other local
+# brave-core edit is treated as user work and blocks the build rather than being reset.
 clean_generated_brave_overlay() {
   local status line path unexpected=0
   status="$(git -C "$BRAVE_CORE" status --porcelain --untracked-files=normal)"
@@ -231,6 +230,10 @@ run_hooks_once_or_fail() {
   return 1
 }
 
+# A first Chromium checkout launches many gclient SCM operations in parallel. Public
+# googlesource endpoints can temporarily return HTTP 429 / RESOURCE_EXHAUSTED. Network
+# recovery is bounded and only repeated while dependency sync itself fails. Once sync
+# succeeds, a deterministic hook error exits immediately instead of sleeping/re-fetching.
 recover_gclient_sync() {
   local chromium_tag chromium_ref attempt delay
   chromium_tag="$(node -e 'const p=require("./package.json"); process.stdout.write(String(p.config?.projects?.chrome?.tag || ""))')"
@@ -259,64 +262,56 @@ recover_gclient_sync() {
         --revision "src@$chromium_ref" \
         --force \
         --jobs="$RECOVERY_JOBS"; then
+      echo "gclient recovery failed; the next attempt will reuse everything already downloaded." >&2
       continue
     fi
 
     echo "Bounded gclient recovery completed; finishing Brave sync without hooks." >&2
-    if brave_sync_without_hooks; then
-      return 0
+    if ! brave_sync_without_hooks; then
+      echo "Brave sync still failed after gclient recovery; the next attempt will reuse the checkout." >&2
+      continue
     fi
+
+    run_hooks_once_or_fail
+    return $?
   done
+
+  echo "Brave bootstrap still failed after $RECOVERY_ATTEMPTS dependency-recovery attempts." >&2
+  echo "Do not delete $WORKSPACE; rerun this script later to continue the existing checkout." >&2
   return 1
 }
 
-write_sync_marker() {
-  python3 - "$SYNC_MARKER" "$TARGET_BRAVE_REF" "$ARCH" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-path = Path(sys.argv[1])
-path.write_text(
-    json.dumps({"brave_ref": sys.argv[2], "arch": sys.argv[3]}, sort_keys=True) + "\n",
-    encoding="utf-8",
-)
-PY
-}
-
-sync_marker_matches() {
-  [[ -f "$SYNC_MARKER" ]] || return 1
-  python3 - "$SYNC_MARKER" "$TARGET_BRAVE_REF" "$ARCH" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-try:
-    data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-except (OSError, json.JSONDecodeError):
-    raise SystemExit(1)
-raise SystemExit(0 if data.get("brave_ref") == sys.argv[2] else 1)
-PY
-}
-
-if sync_marker_matches && [[ -d "$WORKSPACE/src/chrome" ]]; then
-  echo "Detected an existing synced Brave/Chromium checkout; skipping full init." >&2
-else
-  set +e
-  pnpm_run run init --target_os=android --target_arch="$ARCH" --nohooks
-  INIT_STATUS=$?
-  set -e
-
-  if (( INIT_STATUS != 0 )); then
-    if ! recover_gclient_sync; then
-      echo "Brave init/recovery failed after $RECOVERY_ATTEMPTS bounded attempts." >&2
-      exit "$INIT_STATUS"
-    fi
-  fi
-
-  run_hooks_once_or_fail
-  write_sync_marker
+HAS_CHROMIUM=0
+if [[ -d "$WORKSPACE/src/.git" && -f "$WORKSPACE/.gclient" ]]; then
+  HAS_CHROMIUM=1
 fi
 
-python3 "$ROOT/scripts/apply_overlay.py" "$WORKSPACE"
-python3 "$ROOT/scripts/verify_overlay.py" "$WORKSPACE"
+if (( HAS_CHROMIUM == 0 )); then
+  echo "No initialized Chromium checkout detected; running the first Brave init." >&2
+  if pnpm_run run init --target_os=android --target_arch="$ARCH" --nohooks; then
+    run_hooks_once_or_fail
+  else
+    recover_gclient_sync
+  fi
+elif [[ ! -f "$SYNC_MARKER" ]]; then
+  echo "Detected an incomplete existing Chromium checkout; resuming it instead of reinitializing." >&2
+  recover_gclient_sync
+else
+  echo "Detected an existing synced Brave/Chromium checkout; skipping full init." >&2
+  if brave_sync_without_hooks; then
+    run_hooks_once_or_fail
+  else
+    echo "Normal Brave sync failed; falling back to bounded dependency recovery." >&2
+    recover_gclient_sync
+  fi
+fi
+
+cd "$ROOT"
+python3 scripts/apply_overlay.py "$WORKSPACE"
+python3 scripts/verify_overlay.py "$WORKSPACE"
+
+echo
+echo "Brave Android initialized with the TV overlay."
+echo "Pinned Brave core: $TARGET_BRAVE_REF"
+echo "Next: $WORKSPACE/src/build/install-build-deps.sh --android"
+echo "Then: ./scripts/build-debug.sh $ARCH"
