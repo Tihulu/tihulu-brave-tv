@@ -55,9 +55,15 @@ if (( ${#APKS[@]} == 0 )); then
   exit 1
 fi
 
+APK="${APKS[0]}"
+if ! unzip -tq "$APK" >/dev/null; then
+  echo "Build produced an invalid or truncated APK: $APK" >&2
+  exit 1
+fi
+
 echo
 echo "Tihulu TV Browser APK ready:"
-echo "${APKS[0]}"
+echo "$APK"
 echo
 if [[ "${INSTALL_TO_TV:-0}" == "1" ]]; then
   "$ROOT/scripts/install-apk.sh" "$INPUT_ARCH"
