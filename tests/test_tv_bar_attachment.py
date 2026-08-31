@@ -22,16 +22,20 @@ class TvBarAttachmentTests(unittest.TestCase):
         self.assertIn("super.dispatchKeyEvent(event);", self.activity)
         self.assertIn("postShowBrowserBar();", self.activity)
         self.assertIn("mRoot.post(this::showBrowserBar);", self.activity)
-        self.assertNotIn("mSelectLongPressConsumed", self.activity)
         self.assertNotIn("mRoot.addView(", self.activity)
 
-    def test_navigation_mode_changes_only_from_explicit_bar_control(self):
+    def test_navigation_mode_changes_from_bar_or_single_long_ok(self):
         bar = (
             ROOT
             / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBrowserBar.java"
         ).read_text(encoding="utf-8")
         self.assertIn("callback.toggleNavigationMode();", bar)
         self.assertIn('return mode == TvNavigationMode.CURSOR ? "Mode: Cursor" : "Mode: D-pad";', bar)
+        self.assertIn("SELECT_LONG_PRESS_MS = 550L", self.activity)
+        self.assertIn("mRoot.postDelayed(mSelectLongPressRunnable, SELECT_LONG_PRESS_MS);", self.activity)
+        self.assertIn("if (mPendingSelectDownEvent == null || mSelectLongPressConsumed", self.activity)
+        self.assertIn("mSelectLongPressConsumed = true;", self.activity)
+        self.assertIn("if (wasLongPress) return true;", self.activity)
 
     def test_browser_bar_and_control_panel_are_dialog_backed(self):
         bar = (
