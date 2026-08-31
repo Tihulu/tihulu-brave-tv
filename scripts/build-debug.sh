@@ -10,8 +10,10 @@ COMPAT_FILES=(
   browser/brave_ads/ads_service_factory.cc
   browser/sources.gni
   android/java/org/chromium/chrome/browser/firstrun/WelcomeOnboardingActivity.java
+  components/brave_shields/content/browser/ad_block_service.cc
+  browser/net/brave_ad_block_tp_network_delegate_helper.cc
 )
-COMPAT_MARKERS_REGEX='TIHULU_ANDROID_ADS_TOOLTIP_COMPAT|TIHULU_TV_ONBOARDING_CURSOR_COMPAT'
+COMPAT_MARKERS_REGEX='TIHULU_ANDROID_ADS_TOOLTIP_COMPAT|TIHULU_TV_ONBOARDING_CURSOR_COMPAT|TIHULU_SHIELDS_RUNTIME_PROBE'
 CHROMIUM_COMPAT_FILES=(
   third_party/blink/renderer/core/html/resources/html.css
   ui/android/java/src/org/chromium/ui/base/EventForwarder.java
@@ -102,6 +104,11 @@ trap cleanup_compat EXIT INT TERM
 COMPAT_APPLIED=1
 python3 "$ROOT/scripts/apply_brave_android_compat.py" "$WORKSPACE"
 python3 "$ROOT/scripts/apply_brave_tv_onboarding_compat.py" "$WORKSPACE"
+
+# Debug builds carry a bounded, diagnostic-only Shields probe. It never changes prefs, filtering
+# decisions or component updates; it only exposes whether requests reach adblock, whether the
+# service is created, whether the default engine loads, and whether at least one request is blocked.
+python3 "$ROOT/scripts/apply_brave_shields_runtime_probe.py" "$WORKSPACE"
 
 # Do not rewrite identical Tihulu Java/resources on every retry. The fingerprinted
 # wrapper still runs the full verifier and reapplies automatically when any overlay
