@@ -11,7 +11,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.view.View;
 
-/** Non-interactive view drawn inside a ViewOverlay to visualize the synthetic TV pointer. */
+/** Non-interactive cursor view hosted by {@link TvCursorWindow}. */
 public final class TvCursorOverlay extends View {
     private final Paint mOuter = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint mInner = new Paint(Paint.ANTI_ALIAS_FLAG);
