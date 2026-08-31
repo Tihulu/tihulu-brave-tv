@@ -145,9 +145,14 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         TvGitHubUpdater.checkAndInstall(this, mRoot);
     }
 
+    public void checkBraveUpstream() {
+        if (mRoot == null) return;
+        TvBraveUpstream.check(this, mRoot);
+    }
+
     @Override
     public void showAbout() {
-        TvAboutPanel.show(this, this::checkForUpdates);
+        TvAboutPanel.show(this, this::checkForUpdates, this::checkBraveUpstream);
     }
 
     public void goBack() {
