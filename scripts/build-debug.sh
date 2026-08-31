@@ -17,6 +17,10 @@ case "$INPUT_ARCH" in
   *) echo "Unsupported architecture: $INPUT_ARCH" >&2; exit 2 ;;
 esac
 
+# Apply narrow Brave upstream compatibility fixes before the Tihulu overlay. The
+# compatibility script is idempotent and fails closed if the pinned Brave source
+# no longer matches the audited Android link hazard.
+python3 "$ROOT/scripts/apply_brave_android_compat.py" "$WORKSPACE"
 python3 "$ROOT/scripts/apply_overlay.py" "$WORKSPACE"
 python3 "$ROOT/scripts/verify_overlay.py" "$WORKSPACE"
 
@@ -31,10 +35,25 @@ else
 fi
 
 # Brave's Debug preset is a component build. Chromium explicitly forbids component
-# builds on Android, so use Brave's documented Static preset for local APK builds.
-# Static remains a non-official/development build but generates a monolithic Android
-# binary that GN accepts.
-"${PNPM[@]}" run build Static \
-  --target_os=android \
-  --target_arch="$ARCH" \
+# builds on Android, so use the non-component Static preset for local APK builds.
+BUILD_ARGS=(
+  run build Static
+  --target_os=android
+  --target_arch="$ARCH"
   --target_android_output_format=apk
+)
+
+# ARM32 TV boxes have a much smaller process address space and are commonly RAM
+# constrained. Brave Rewards/Brave Ads are not required for Shields/ad blocking or
+# normal web browsing, so omit those subsystems from the 32-bit TV build. This cuts
+# background/service code and also avoids desktop-only Ads tooltip code paths that
+# have no Android implementation. Keep the normal Brave feature set on 64-bit builds.
+if [[ "$ARCH" == "arm" ]]; then
+  echo "ARM32 low-memory build: disabling Brave Rewards and Brave Ads; Shields remains enabled." >&2
+  BUILD_ARGS+=(
+    --gn=enable_brave_rewards:false
+    --gn=enable_brave_ads:false
+  )
+fi
+
+"${PNPM[@]}" "${BUILD_ARGS[@]}"
