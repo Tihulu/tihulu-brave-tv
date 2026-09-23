@@ -46,7 +46,7 @@ class TvBarAttachmentTests(unittest.TestCase):
         self.assertIn("dialog.setContentView(shell);", bar)
         self.assertIn("dialog.show();", bar)
         self.assertIn("Dialog dialog = new Dialog(context);", panel)
-        self.assertIn("dialog.setContentView(column);", panel)
+        self.assertIn("TvUi.setPanelContent(context, dialog, column);", panel)
         self.assertIn("dialog.show();", panel)
 
 

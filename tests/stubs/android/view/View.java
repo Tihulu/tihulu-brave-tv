@@ -9,6 +9,9 @@ public class View {
     public interface OnClickListener { void onClick(View v); }
     public interface OnFocusChangeListener { void onFocusChange(View v, boolean hasFocus); }
     public interface OnLayoutChangeListener { void onLayoutChange(View v,int l,int t,int r,int b,int ol,int ot,int orr,int ob); }
+    public void setBackground(android.graphics.drawable.GradientDrawable d){}
+    public void setMinHeight(int h){}
+    public View findFocus(){return null;}
     public void setFocusable(boolean v){}
     public void setClickable(boolean v){}
     public void setPadding(int l,int t,int r,int b){}
@@ -30,6 +33,7 @@ public class View {
     public boolean dispatchTouchEvent(MotionEvent e){return false;}
     public Resources getResources(){return c==null?new Resources():c.getResources();}
     public void setOnClickListener(OnClickListener l){}
-    public void setOnFocusChangeListener(OnFocusChangeListener l){}
+    public OnFocusChangeListener focusListener;
+    public void setOnFocusChangeListener(OnFocusChangeListener l){focusListener=l;}
     public boolean requestFocus(){return true;}
 }

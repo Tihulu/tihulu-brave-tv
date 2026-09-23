@@ -1,0 +1,1 @@
+package org.chromium.url; public class GURL { public String getSpec(){return "https://example.com/";} public String getHost(){return "example.com";} }

@@ -22,6 +22,7 @@ public class ChromeTabbedActivity extends Context {
         return fullscreenManager;
     }
 
+    public org.chromium.chrome.browser.tab.Tab getActivityTab(){return null;}
     public boolean isFinishing() {
         return false;
     }

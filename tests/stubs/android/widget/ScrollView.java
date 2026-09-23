@@ -1,0 +1,1 @@
+package android.widget; import android.content.Context; import android.view.View; public class ScrollView extends android.view.ViewGroup { public ScrollView(Context c){super(c);} public void setFillViewport(boolean b){} public void addView(View v){} }

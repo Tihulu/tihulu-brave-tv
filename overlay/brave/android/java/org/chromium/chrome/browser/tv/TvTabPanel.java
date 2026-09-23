@@ -15,10 +15,6 @@ import android.widget.TextView;
 
 /** TV-sized tab controls using Chromium's keyboard-shortcut path. */
 final class TvTabPanel {
-    private static final int NORMAL_BG = Color.rgb(48, 48, 52);
-    private static final int FOCUSED_BG = Color.rgb(218, 32, 40);
-    private static final int NORMAL_TEXT = Color.rgb(236, 236, 240);
-
     interface Callback {
         void previousTab();
         void nextTab();
@@ -28,7 +24,7 @@ final class TvTabPanel {
 
     private TvTabPanel() {}
 
-    static void show(Context context, Callback callback) {
+    static Dialog show(Context context, Callback callback) {
         Dialog dialog = new Dialog(context);
         LinearLayout column = new LinearLayout(context);
         column.setOrientation(LinearLayout.VERTICAL);
@@ -56,16 +52,14 @@ final class TvTabPanel {
         column.addView(closeTab, matchWrap(context));
         column.addView(closePanel, matchWrap(context));
 
-        dialog.setContentView(column);
+        TvUi.setPanelContent(context, dialog, column);
         dialog.setOnShowListener(
                 ignored -> {
-                    if (dialog.getWindow() != null) {
-                        dialog.getWindow().setLayout(
-                                dp(context, 640), ViewGroup.LayoutParams.WRAP_CONTENT);
-                    }
+                    TvUi.sizePanel(context, dialog, 640);
                     next.requestFocus();
                 });
         dialog.show();
+        return dialog;
     }
 
     private static Button button(
@@ -82,22 +76,12 @@ final class TvTabPanel {
     private static Button tvButton(Context context, String label) {
         Button button = new Button(context);
         button.setText(label);
-        button.setTextSize(18);
-        button.setTextColor(NORMAL_TEXT);
-        button.setBackgroundColor(NORMAL_BG);
-        button.setFocusable(true);
-        button.setOnFocusChangeListener(
-                (view, focused) -> {
-                    button.setBackgroundColor(focused ? FOCUSED_BG : NORMAL_BG);
-                    button.setTextColor(focused ? Color.WHITE : NORMAL_TEXT);
-                    button.setText(focused ? "▶ " + label + " ◀" : label);
-                });
+        TvUi.styleButton(context, button);
         return button;
     }
 
     private static LinearLayout.LayoutParams matchWrap(Context context) {
-        return new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(context, 64));
+        return TvUi.row(context);
     }
 
     private static int dp(Context context, int value) {

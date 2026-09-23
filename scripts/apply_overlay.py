@@ -23,6 +23,8 @@ JAVA_CLASSES = [
     "TvCursorOverlay.java",
     "TvMouseDispatcher.java",
     "TvMemoryProfile.java",
+    "TvUi.java",
+    "TvShieldsPanel.java",
     "TvControlPanel.java",
     "TvAboutPanel.java",
     "TvBuildInfo.java",

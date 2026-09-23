@@ -16,10 +16,6 @@ import android.widget.TextView;
 
 /** Small focusable control surface intended for a TV viewing distance. */
 final class TvControlPanel {
-    private static final int NORMAL_BG = Color.rgb(48, 48, 52);
-    private static final int FOCUSED_BG = Color.rgb(218, 32, 40);
-    private static final int NORMAL_TEXT = Color.rgb(236, 236, 240);
-
     interface Callback {
         TvNavigationMode navigationMode();
         void setNavigationMode(TvNavigationMode mode);
@@ -32,7 +28,7 @@ final class TvControlPanel {
 
     private TvControlPanel() {}
 
-    static void show(Context context, Callback callback) {
+    static Dialog show(Context context, Callback callback) {
         Dialog dialog = new Dialog(context);
         LinearLayout column = new LinearLayout(context);
         column.setOrientation(LinearLayout.VERTICAL);
@@ -45,13 +41,13 @@ final class TvControlPanel {
         title.setTextColor(Color.WHITE);
         title.setTextSize(24);
         title.setGravity(Gravity.START);
-        column.addView(title, matchWrap());
+        column.addView(title, matchWrap(context));
 
         TextView subtitle = new TextView(context);
         subtitle.setText("TV Controls · Based on Brave & Chromium");
         subtitle.setTextColor(Color.rgb(210, 210, 214));
         subtitle.setTextSize(16);
-        column.addView(subtitle, matchWrap());
+        column.addView(subtitle, matchWrap(context));
 
         Button mode = tvButton(context);
         updateModeText(mode, callback.navigationMode());
@@ -61,7 +57,7 @@ final class TvControlPanel {
                     callback.setNavigationMode(next);
                     updateModeText(mode, next);
                 });
-        column.addView(mode, matchWrap());
+        column.addView(mode, matchWrap(context));
 
         Button keyboard = tvButton(context);
         keyboard.setText("Search / Address / Keyboard");
@@ -70,7 +66,7 @@ final class TvControlPanel {
                     dialog.dismiss();
                     callback.focusAddressBar();
                 });
-        column.addView(keyboard, matchWrap());
+        column.addView(keyboard, matchWrap(context));
 
         Button tabs = tvButton(context);
         tabs.setText("Tabs");
@@ -79,7 +75,7 @@ final class TvControlPanel {
                     dialog.dismiss();
                     callback.showTabs();
                 });
-        column.addView(tabs, matchWrap());
+        column.addView(tabs, matchWrap(context));
 
         Button update = tvButton(context);
         update.setText("Check for Tihulu updates");
@@ -88,7 +84,7 @@ final class TvControlPanel {
                     dialog.dismiss();
                     callback.checkForUpdates();
                 });
-        column.addView(update, matchWrap());
+        column.addView(update, matchWrap(context));
 
         Button about = tvButton(context);
         about.setText("About Tihulu TV Browser");
@@ -97,44 +93,32 @@ final class TvControlPanel {
                     dialog.dismiss();
                     callback.showAbout();
                 });
-        column.addView(about, matchWrap());
+        column.addView(about, matchWrap(context));
 
         Button center = tvButton(context);
         center.setText("Center cursor");
         center.setOnClickListener(v -> callback.centerCursor());
-        column.addView(center, matchWrap());
+        column.addView(center, matchWrap(context));
 
         Button close = tvButton(context);
         close.setText("Close");
         close.setOnClickListener(v -> dialog.dismiss());
-        column.addView(close, matchWrap());
+        column.addView(close, matchWrap(context));
 
-        dialog.setContentView(column);
-        if (dialog.getWindow() != null) {
-            dialog.getWindow().setLayout(dp(context, 560), ViewGroup.LayoutParams.WRAP_CONTENT);
-        }
+        TvUi.setPanelContent(context, dialog, column);
+
         dialog.setOnShowListener(
                 ignored -> {
-                    if (dialog.getWindow() != null) {
-                        dialog.getWindow().setLayout(
-                                dp(context, 560), ViewGroup.LayoutParams.WRAP_CONTENT);
-                    }
+                    TvUi.sizePanel(context, dialog, 640);
                     mode.requestFocus();
                 });
         dialog.show();
+        return dialog;
     }
 
     private static Button tvButton(Context context) {
         Button button = new Button(context);
-        button.setTextSize(18);
-        button.setTextColor(NORMAL_TEXT);
-        button.setBackgroundColor(NORMAL_BG);
-        button.setFocusable(true);
-        button.setOnFocusChangeListener(
-                (view, focused) -> {
-                    button.setBackgroundColor(focused ? FOCUSED_BG : NORMAL_BG);
-                    button.setTextColor(focused ? Color.WHITE : NORMAL_TEXT);
-                });
+        TvUi.styleButton(context, button);
         return button;
     }
 
@@ -142,9 +126,8 @@ final class TvControlPanel {
         button.setText(mode == TvNavigationMode.DPAD ? "Navigation: D-pad" : "Navigation: Cursor");
     }
 
-    private static LinearLayout.LayoutParams matchWrap() {
-        return new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+    private static LinearLayout.LayoutParams matchWrap(Context context) {
+        return TvUi.row(context);
     }
 
     private static int dp(Context context, int value) {

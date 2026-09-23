@@ -13,9 +13,7 @@ class TvUiAndInstallerTests(unittest.TestCase):
         for label in ["← Back", "→ Forward", "↻ Reload", "Search / Address", "Tabs", "Menu", "✕ Close"]:
             self.assertIn(label, text)
         self.assertIn("dp(context, 64)", text)
-        self.assertIn("setOnFocusChangeListener", text)
-        self.assertIn("FOCUSED_BG", text)
-        self.assertIn('button.setText(focused ? "▶ " + label + " ◀" : label);', text)
+        self.assertIn("TvUi.button(context, label, action)", text)
         self.assertNotIn("setScaleX", text)
         self.assertNotIn("setScaleY", text)
         self.assertIn("window.setGravity(Gravity.TOP);", text)
@@ -34,8 +32,8 @@ class TvUiAndInstallerTests(unittest.TestCase):
         self.assertIn("event.getRepeatCount() > 0", activity)
         self.assertIn("postShowBrowserBar();", activity)
         self.assertIn("toggleNavigationMode();", bar)
-        self.assertIn("Mode button: Cursor/D-pad", bar)
-        self.assertIn("keyCode == KeyEvent.KEYCODE_DPAD_DOWN", bar)
+        self.assertIn("Hold ↑ on page: open controls", bar)
+        self.assertNotIn("keyCode == KeyEvent.KEYCODE_DPAD_DOWN", bar)
         self.assertNotIn("mSelectLongPressConsumed", activity)
 
     def test_plain_dpad_path_is_throttled_and_cursor_does_not_emit_hover_storms(self):

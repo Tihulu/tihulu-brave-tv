@@ -10,7 +10,7 @@ public class LinearLayout extends ViewGroup {
     public void setBackgroundColor(int c){}
     public void addView(View v, LayoutParams p){}
     public static class LayoutParams extends ViewGroup.LayoutParams {
-        public float weight;
+        public float weight; public void setMargins(int a,int b,int c,int d){}
         public LayoutParams(int w,int h){super(w,h);}
         public LayoutParams(int w,int h,float weight){super(w,h);this.weight=weight;}
     }

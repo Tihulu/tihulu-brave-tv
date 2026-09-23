@@ -34,12 +34,21 @@ public final class TvMemoryProfile {
         try {
             ActivityManager manager =
                     (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
-            return manager != null && manager.isLowRamDevice();
+            if (manager == null) return false;
+            if (manager.isLowRamDevice()) return true;
+            ActivityManager.MemoryInfo info = new ActivityManager.MemoryInfo();
+            manager.getMemoryInfo(info);
+            return isSmallMemoryDevice(info.totalMem);
         } catch (RuntimeException ignored) {
             // Some vendor Android builds expose incomplete system services. Failure to query the
             // hint must not prevent browser startup; 64-bit then keeps Chromium's default policy.
             return false;
         }
+    }
+
+    static boolean isSmallMemoryDevice(long totalBytes) {
+        // Physical RAM, not currently available RAM: avoid changing policy as other apps run.
+        return totalBytes > 0 && totalBytes <= 2L * 1024 * 1024 * 1024;
     }
 
     static String runtimeLabel(Context context) {

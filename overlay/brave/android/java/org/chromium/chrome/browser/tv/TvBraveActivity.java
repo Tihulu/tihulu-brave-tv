@@ -54,6 +54,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     private TvCursorState mCursorState;
     private TvCursorOverlay mCursorOverlay;
     private Dialog mBrowserBarDialog;
+    private Dialog mPanelDialog;
     private ViewGroup mRoot;
     private boolean mUpLongPressConsumed;
     private boolean mTvUiInitialized;
@@ -82,6 +83,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     @Override
     public void onDestroyInternal() {
         dismissBrowserBar();
+        dismissPanel();
         if (mFullscreenObserverRegistered) {
             getFullscreenManager().removeObserver(mFullscreenObserver);
             mFullscreenObserverRegistered = false;
@@ -94,6 +96,13 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         // Do not call UiModeManager for every remote event. The TV decision is cached once after
         // Chromium finishes inflating the activity.
         if (!mTvRuntimeEnabled) return super.dispatchKeyEvent(event);
+        // Observe fullscreen before the first remote event, even if no TV panel was opened yet.
+        ensureFullscreenObserverRegistered();
+        // Let text editing and the TV IME own arrows/OK when the omnibox has focus.
+        if (mRoot != null && mRoot.findFocus() instanceof android.widget.EditText) {
+            mUpLongPressConsumed = false;
+            return super.dispatchKeyEvent(event);
+        }
         if (mHtmlFullscreen) return super.dispatchKeyEvent(event);
 
         // MENU/INFO/GUIDE is a direct top-bar toggle when the remote provides one. Defer Dialog
@@ -118,7 +127,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
                 && mUpLongPressConsumed) {
             mUpLongPressConsumed = false;
             super.dispatchKeyEvent(event);
-            postShowBrowserBar();
+            if (!event.isCanceled()) postShowBrowserBar();
             return true;
         }
 
@@ -136,7 +145,8 @@ public final class TvBraveActivity extends ChromeTabbedActivity
                 return true;
             }
             if (isSelectKey(keyCode)) {
-                if (event.getAction() == KeyEvent.ACTION_UP && mCursorState != null && mRoot != null) {
+                if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()
+                        && mCursorState != null && mRoot != null) {
                     TvMouseDispatcher.primaryClick(mRoot, mCursorState.x(), mCursorState.y());
                 }
                 return true;
@@ -207,7 +217,8 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     public void showAbout() {
         if (mHtmlFullscreen) return;
         dismissBrowserBar();
-        TvAboutPanel.show(this, this::checkForUpdates, this::checkBraveUpstream);
+        dismissPanel();
+        mPanelDialog = TvAboutPanel.show(this, this::checkForUpdates, this::checkBraveUpstream);
     }
 
     @Override
@@ -249,14 +260,31 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     public void showTabs() {
         if (mHtmlFullscreen) return;
         dismissBrowserBar();
-        TvTabPanel.show(this, this);
+        dismissPanel();
+        mPanelDialog = TvTabPanel.show(this, this);
     }
 
     @Override
     public void showTvControls() {
         if (mHtmlFullscreen || isFinishing()) return;
         dismissBrowserBar();
-        TvControlPanel.show(this, this);
+        dismissPanel();
+        mPanelDialog = TvControlPanel.show(this, this);
+    }
+
+    @Override
+    public void showShields() {
+        if (mHtmlFullscreen || isFinishing()) return;
+        dismissBrowserBar();
+        dismissPanel();
+        mPanelDialog = TvShieldsPanel.show(this, getActivityTab());
+    }
+
+    private void dismissPanel() {
+        if (mPanelDialog != null) {
+            mPanelDialog.dismiss();
+            mPanelDialog = null;
+        }
     }
 
     private void postShowBrowserBar() {
@@ -303,6 +331,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         if (fullscreen) {
             mUpLongPressConsumed = false;
             dismissBrowserBar();
+            dismissPanel();
         }
         refreshTvOverlayVisibility();
     }

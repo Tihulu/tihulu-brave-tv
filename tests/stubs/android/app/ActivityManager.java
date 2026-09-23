@@ -1,1 +1,1 @@
-package android.app; public class ActivityManager { public boolean isLowRamDevice(){return false;} }
+package android.app; public class ActivityManager { public static class MemoryInfo { public long totalMem; } public boolean lowRam; public long memory; public void getMemoryInfo(MemoryInfo i){i.totalMem=memory;} public boolean isLowRamDevice(){return lowRam;} }
