@@ -19,6 +19,7 @@ import org.chromium.chrome.browser.ChromeTabbedActivity;
 import org.chromium.chrome.browser.fullscreen.FullscreenManager;
 import org.chromium.chrome.browser.fullscreen.FullscreenOptions;
 import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.chrome.browser.tabmodel.TabModel;
 
 /** Chrome/Brave tabbed activity with a TV-first input and browser-control layer. */
 public final class TvBraveActivity extends ChromeTabbedActivity
@@ -62,6 +63,8 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     private boolean mFullscreenObserverRegistered;
     private boolean mCursorLayoutListenerInstalled;
     private boolean mHtmlFullscreen;
+    private boolean mNavigationPreferenceLoaded;
+    private long mLastScrollTime = -1;
 
     /**
      * Chromium owns startup. Keep the TV hook deliberately inert here: no added views, no
@@ -98,6 +101,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         if (!mTvRuntimeEnabled) return super.dispatchKeyEvent(event);
         // Observe fullscreen before the first remote event, even if no TV panel was opened yet.
         ensureFullscreenObserverRegistered();
+        restoreNavigationPreference();
         // Let text editing and the TV IME own arrows/OK when the omnibox has focus.
         if (mRoot != null && mRoot.findFocus() instanceof android.widget.EditText) {
             mUpLongPressConsumed = false;
@@ -108,8 +112,31 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         // MENU/INFO/GUIDE is a direct top-bar toggle when the remote provides one. Defer Dialog
         // creation until the current key dispatch has completed to avoid re-entrant UI work.
         if (isControlsShortcut(event)) {
-            if (event.getAction() == KeyEvent.ACTION_UP) postToggleBrowserBar();
+            if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) postToggleBrowserBar();
             return true;
+        }
+
+        if (mNavigationMode == TvNavigationMode.SCROLL) {
+            ensureCursorInitialized();
+            int keyCode = event.getKeyCode();
+            if (isDirectionKey(keyCode)) {
+                if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                    long now = SystemClock.uptimeMillis();
+                    if (event.getRepeatCount() == 0 || mLastScrollTime < 0 || now - mLastScrollTime >= 80) {
+                        mLastScrollTime = now;
+                        float horizontal = keyCode == KeyEvent.KEYCODE_DPAD_LEFT ? -2 : keyCode == KeyEvent.KEYCODE_DPAD_RIGHT ? 2 : 0;
+                        float vertical = keyCode == KeyEvent.KEYCODE_DPAD_UP ? 2 : keyCode == KeyEvent.KEYCODE_DPAD_DOWN ? -2 : 0;
+                        if (mCursorState != null && mRoot != null) {
+                            TvMouseDispatcher.scroll(mRoot, mCursorState.x(), mCursorState.y(), horizontal, vertical);
+                        }
+                    }
+                }
+                return true;
+            }
+            if (isSelectKey(keyCode)) {
+                if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) postShowBrowserBar();
+                return true;
+            }
         }
 
         // Hold UP to request browser chrome. We only mark the hold while repeat events are arriving;
@@ -171,20 +198,34 @@ public final class TvBraveActivity extends ChromeTabbedActivity
 
     @Override
     public TvNavigationMode navigationMode() {
+        restoreNavigationPreference();
         return mNavigationMode;
     }
 
     @Override
     public void setNavigationMode(TvNavigationMode mode) {
         mNavigationMode = mode == null ? TvNavigationMode.DPAD : mode;
-        if (mNavigationMode == TvNavigationMode.CURSOR) ensureCursorInitialized();
+        mNavigationPreferenceLoaded = true;
+        getSharedPreferences("tihulu_tv", Context.MODE_PRIVATE).edit()
+                .putString("navigation_mode", mNavigationMode.name()).apply();
+        mUpLongPressConsumed = false;
+        mLastScrollTime = -1;
+        if (mNavigationMode != TvNavigationMode.DPAD) ensureCursorInitialized();
         refreshTvOverlayVisibility();
-        if (!mHtmlFullscreen && mNavigationMode == TvNavigationMode.CURSOR) updateCursorOverlay();
+        if (!mHtmlFullscreen && mNavigationMode != TvNavigationMode.DPAD) updateCursorOverlay();
+    }
+
+    private void restoreNavigationPreference() {
+        if (mNavigationPreferenceLoaded) return;
+        mNavigationPreferenceLoaded = true;
+        mNavigationMode = TvNavigationMode.fromPreference(
+                getSharedPreferences("tihulu_tv", Context.MODE_PRIVATE)
+                        .getString("navigation_mode", "DPAD"));
     }
 
     @Override
     public void toggleNavigationMode() {
-        setNavigationMode(mNavigationMode.toggle());
+        setNavigationMode(navigationMode().toggle());
     }
 
     @Override
@@ -254,6 +295,11 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     @Override
     public void closeCurrentTab() {
         dispatchShortcut(KEY_W, KeyEvent.META_CTRL_ON);
+    }
+
+    @Override
+    public TabModel tabModel() {
+        return areTabModelsInitialized() ? getTabModelSelector().getCurrentModel() : null;
     }
 
     @Override
@@ -338,7 +384,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
 
     private void refreshTvOverlayVisibility() {
         if (mCursorOverlay != null) {
-            boolean showCursor = !mHtmlFullscreen && mNavigationMode == TvNavigationMode.CURSOR;
+            boolean showCursor = !mHtmlFullscreen && mNavigationMode != TvNavigationMode.DPAD;
             mCursorOverlay.setVisibility(showCursor ? View.VISIBLE : View.GONE);
         }
     }

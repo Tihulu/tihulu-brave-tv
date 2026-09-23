@@ -31,6 +31,28 @@ public final class TvMouseDispatcher {
         dispatchTouch(root, downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y);
     }
 
+    /** Native wheel event, targeted at the pointer, so nested scroll containers also work. */
+    public static void scroll(View root, float x, float y, float horizontal, float vertical) {
+        MotionEvent.PointerProperties pointer = new MotionEvent.PointerProperties();
+        pointer.id = 0;
+        pointer.toolType = MotionEvent.TOOL_TYPE_MOUSE;
+        MotionEvent.PointerCoords coords = new MotionEvent.PointerCoords();
+        coords.x = x;
+        coords.y = y;
+        coords.setAxisValue(MotionEvent.AXIS_HSCROLL, horizontal);
+        coords.setAxisValue(MotionEvent.AXIS_VSCROLL, vertical);
+        long now = SystemClock.uptimeMillis();
+        MotionEvent event = MotionEvent.obtain(now, now, MotionEvent.ACTION_SCROLL, 1,
+                new MotionEvent.PointerProperties[] {pointer},
+                new MotionEvent.PointerCoords[] {coords}, 0, 0, 1, 1, 0, 0,
+                InputDevice.SOURCE_MOUSE, 0);
+        try {
+            root.dispatchGenericMotionEvent(event);
+        } finally {
+            event.recycle();
+        }
+    }
+
     private static void dispatchTouch(
             View root, long downTime, long eventTime, int action, float x, float y) {
         MotionEvent event = MotionEvent.obtain(downTime, eventTime, action, x, y, 0);

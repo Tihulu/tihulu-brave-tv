@@ -155,7 +155,7 @@ final class TvBrowserBar extends LinearLayout {
     }
 
     private static String modeLabel(TvNavigationMode mode) {
-        return mode == TvNavigationMode.CURSOR ? "Mode: Cursor" : "Mode: D-pad";
+        return "Mode: " + mode.label();
     }
 
     private static Button actionButton(Context context, String label, Runnable action) {

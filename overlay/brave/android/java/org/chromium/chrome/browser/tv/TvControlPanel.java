@@ -44,7 +44,7 @@ final class TvControlPanel {
         column.addView(title, matchWrap(context));
 
         TextView subtitle = new TextView(context);
-        subtitle.setText("TV Controls · Based on Brave & Chromium");
+        subtitle.setText("D-pad: select · Cursor: point · Scroll: arrows scroll, OK opens controls");
         subtitle.setTextColor(Color.rgb(210, 210, 214));
         subtitle.setTextSize(16);
         column.addView(subtitle, matchWrap(context));
@@ -123,7 +123,7 @@ final class TvControlPanel {
     }
 
     private static void updateModeText(Button button, TvNavigationMode mode) {
-        button.setText(mode == TvNavigationMode.DPAD ? "Navigation: D-pad" : "Navigation: Cursor");
+        button.setText("Navigation: " + mode.label());
     }
 
     private static LinearLayout.LayoutParams matchWrap(Context context) {

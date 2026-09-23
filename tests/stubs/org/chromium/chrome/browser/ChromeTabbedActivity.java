@@ -23,6 +23,8 @@ public class ChromeTabbedActivity extends Context {
     }
 
     public org.chromium.chrome.browser.tab.Tab getActivityTab(){return null;}
+    public org.chromium.chrome.browser.tabmodel.TabModelSelector getTabModelSelector(){return new org.chromium.chrome.browser.tabmodel.TabModelSelector();}
+    public boolean areTabModelsInitialized(){return false;}
     public boolean isFinishing() {
         return false;
     }

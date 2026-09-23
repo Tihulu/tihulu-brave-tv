@@ -8,6 +8,8 @@ The goal is to keep Brave's browser engine, Shields, tab model and Chromium comp
 
 - **D-pad mode** using Chromium/Blink's native spatial navigation.
 - **Cursor mode** where the remote D-pad moves a virtual mouse pointer and OK clicks.
+- **Scroll mode** with native wheel events at the pointer and OK to return to controls.
+- **Persistent navigation mode** and an eight-at-a-time text tab overview without thumbnails.
 - **TV-first browser bar** with large Back, Forward, Reload, Search/Address, Tabs and TV Controls actions.
 - **TV controls panel** for changing navigation mode, opening the address bar/keyboard and re-centering the pointer.
 - **Tihulu branding** with a dedicated launcher icon, Android TV banner and About panel.
