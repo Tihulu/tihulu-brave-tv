@@ -16,14 +16,21 @@ import android.view.ViewGroup;
 import android.view.ViewGroupOverlay;
 
 import org.chromium.chrome.browser.ChromeTabbedActivity;
+import org.chromium.chrome.R;
 import org.chromium.chrome.browser.fullscreen.FullscreenManager;
 import org.chromium.chrome.browser.fullscreen.FullscreenOptions;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tabmodel.TabModel;
+import org.chromium.chrome.browser.search_engines.TemplateUrlServiceFactory;
+import org.chromium.components.search_engines.TemplateUrlService;
+import org.chromium.components.url_formatter.UrlFormatter;
+import org.chromium.content_public.browser.LoadUrlParams;
+import org.chromium.url.GURL;
 
 /** Chrome/Brave tabbed activity with a TV-first input and browser-control layer. */
 public final class TvBraveActivity extends ChromeTabbedActivity
-        implements TvControlPanel.Callback, TvBrowserBar.Callback, TvTabPanel.Callback {
+        implements TvControlPanel.Callback, TvBrowserBar.Callback, TvTabPanel.Callback,
+                TvHomePanel.Callback, TvAddressPanel.Callback {
     private static final float CURSOR_STEP_DP = 24.0f;
     private static final float CURSOR_REPEAT_ACCELERATION = 0.16f;
     private static final int CURSOR_MAX_ACCEL_REPEAT = 6;
@@ -65,6 +72,8 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     private boolean mHtmlFullscreen;
     private boolean mNavigationPreferenceLoaded;
     private long mLastScrollTime = -1;
+    private long mAddressRequest;
+    private boolean mDestroyed;
 
     /**
      * Chromium owns startup. Keep the TV hook deliberately inert here: no added views, no
@@ -85,6 +94,8 @@ public final class TvBraveActivity extends ChromeTabbedActivity
 
     @Override
     public void onDestroyInternal() {
+        mDestroyed = true;
+        mAddressRequest++;
         dismissBrowserBar();
         dismissPanel();
         if (mFullscreenObserverRegistered) {
@@ -99,6 +110,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         // Do not call UiModeManager for every remote event. The TV decision is cached once after
         // Chromium finishes inflating the activity.
         if (!mTvRuntimeEnabled) return super.dispatchKeyEvent(event);
+        if (mDestroyed) return super.dispatchKeyEvent(event);
         // Observe fullscreen before the first remote event, even if no TV panel was opened yet.
         ensureFullscreenObserverRegistered();
         restoreNavigationPreference();
@@ -153,7 +165,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
                 && event.getAction() == KeyEvent.ACTION_UP
                 && mUpLongPressConsumed) {
             mUpLongPressConsumed = false;
-            super.dispatchKeyEvent(event);
+            if (mNavigationMode == TvNavigationMode.DPAD) super.dispatchKeyEvent(event);
             if (!event.isCanceled()) postShowBrowserBar();
             return true;
         }
@@ -164,7 +176,9 @@ public final class TvBraveActivity extends ChromeTabbedActivity
             if (isDirectionKey(keyCode)) {
                 if (event.getAction() == KeyEvent.ACTION_DOWN) {
                     if (keyCode == KeyEvent.KEYCODE_DPAD_UP && isCursorAtTopEdge()) {
-                        postShowBrowserBar();
+                        // Open only after release, so the new window never receives an orphan
+                        // key-up and immediately changes focus or activates a control.
+                        mUpLongPressConsumed = true;
                     } else {
                         moveCursorForKey(keyCode, event.getRepeatCount());
                     }
@@ -230,8 +244,90 @@ public final class TvBraveActivity extends ChromeTabbedActivity
 
     @Override
     public void focusAddressBar() {
-        if (mHtmlFullscreen) return;
-        dispatchShortcut(KeyEvent.KEYCODE_L, KeyEvent.META_CTRL_ON);
+        if (mHtmlFullscreen || isFinishing() || mDestroyed) return;
+        dismissBrowserBar();
+        dismissPanel();
+        Tab tab = areTabModelsInitialized() ? getActivityTab() : null;
+        String url = tab == null || tab.isDestroyed() ? "" : tab.getUrl().getSpec();
+        if (!url.startsWith("https://") && !url.startsWith("http://")) url = "";
+        mPanelDialog = TvAddressPanel.show(this, url, this);
+    }
+
+    @Override
+    public boolean openAddress(String input) {
+        if (isFinishing() || mDestroyed || mHtmlFullscreen || !areTabModelsInitialized()) return false;
+        Tab tab = getActivityTab();
+        if (tab == null || tab.isDestroyed()) return false;
+        String candidate = TvAddressInput.urlCandidate(input);
+        long request = ++mAddressRequest;
+        if (!candidate.isEmpty()) {
+            GURL url = UrlFormatter.fixupUrl(candidate);
+            if (!url.isValid() || (!"https".equals(url.getScheme()) && !"http".equals(url.getScheme()))) {
+                throw new IllegalArgumentException("Check the web address and try again.");
+            }
+            tab.loadUrl(new LoadUrlParams(url.getSpec()));
+            return true;
+        }
+        // Use the active profile's chosen engine, including private mode. Never silently
+        // switch providers or navigate another tab if engine loading completes later.
+        String originalUrl = tab.getUrl().getSpec();
+        TemplateUrlService service = TemplateUrlServiceFactory.getForProfile(tab.getProfile());
+        service.runWhenLoaded(() -> {
+            if (mDestroyed || isFinishing() || request != mAddressRequest || tab.isDestroyed()
+                    || getActivityTab() != tab || !originalUrl.equals(tab.getUrl().getSpec())) return;
+            String searchUrl = service.getUrlForSearchQuery(input.trim());
+            if (searchUrl == null || searchUrl.isEmpty()) {
+                android.widget.Toast.makeText(this, "Choose a default search engine in Brave settings.",
+                        android.widget.Toast.LENGTH_LONG).show();
+                return;
+            }
+            tab.loadUrl(new LoadUrlParams(searchUrl));
+        });
+        return true;
+    }
+
+    @Override
+    public void showHome() {
+        if (mHtmlFullscreen || isFinishing() || mDestroyed) return;
+        dismissBrowserBar();
+        dismissPanel();
+        mPanelDialog = TvHomePanel.show(this, this);
+    }
+
+    @Override
+    public void showBookmarks() {
+        openBrowserSection(R.id.all_bookmarks_menu_id);
+    }
+
+    @Override
+    public void showDownloads() {
+        openBrowserSection(R.id.downloads_menu_id);
+    }
+
+    private void openBrowserSection(int id) {
+        if (mRoot == null || mHtmlFullscreen || isFinishing() || mDestroyed) return;
+        dismissBrowserBar();
+        dismissPanel();
+        mRoot.post(() -> {
+            if (!mDestroyed && !isFinishing() && areTabModelsInitialized()) {
+                onMenuOrKeyboardAction(id, false, null, null);
+            }
+        });
+    }
+
+    @Override
+    public String pageTitle() {
+        Tab tab = areTabModelsInitialized() ? getActivityTab() : null;
+        return tab == null || tab.isDestroyed() ? "Tihulu TV Browser" : tab.getTitle();
+    }
+
+    @Override
+    public String pageOrigin() {
+        Tab tab = areTabModelsInitialized() ? getActivityTab() : null;
+        if (tab == null || tab.isDestroyed()) return "Ready to explore";
+        String url = tab.getUrl().getSpec();
+        return url.startsWith("https://") || url.startsWith("http://")
+                ? UrlFormatter.formatUrlForSecurityDisplay(url) : "Tihulu TV Browser";
     }
 
     @Override
@@ -256,7 +352,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
 
     @Override
     public void showAbout() {
-        if (mHtmlFullscreen) return;
+        if (mHtmlFullscreen || isFinishing() || mDestroyed) return;
         dismissBrowserBar();
         dismissPanel();
         mPanelDialog = TvAboutPanel.show(this, this::checkForUpdates, this::checkBraveUpstream);
@@ -290,6 +386,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     @Override
     public void newTab() {
         dispatchShortcut(KEY_T, KeyEvent.META_CTRL_ON);
+        if (mRoot != null) mRoot.post(this::showHome);
     }
 
     @Override
@@ -304,7 +401,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
 
     @Override
     public void showTabs() {
-        if (mHtmlFullscreen) return;
+        if (mHtmlFullscreen || isFinishing() || mDestroyed) return;
         dismissBrowserBar();
         dismissPanel();
         mPanelDialog = TvTabPanel.show(this, this);
@@ -312,7 +409,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
 
     @Override
     public void showTvControls() {
-        if (mHtmlFullscreen || isFinishing()) return;
+        if (mHtmlFullscreen || isFinishing() || mDestroyed) return;
         dismissBrowserBar();
         dismissPanel();
         mPanelDialog = TvControlPanel.show(this, this);
@@ -320,7 +417,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
 
     @Override
     public void showShields() {
-        if (mHtmlFullscreen || isFinishing()) return;
+        if (mHtmlFullscreen || isFinishing() || mDestroyed) return;
         dismissBrowserBar();
         dismissPanel();
         mPanelDialog = TvShieldsPanel.show(this, getActivityTab());
@@ -343,7 +440,8 @@ public final class TvBraveActivity extends ChromeTabbedActivity
 
     private void showBrowserBar() {
         ensureFullscreenObserverRegistered();
-        if (mHtmlFullscreen || isFinishing()) return;
+        if (mHtmlFullscreen || isFinishing() || mDestroyed) return;
+        dismissPanel();
         if (mBrowserBarDialog != null && mBrowserBarDialog.isShowing()) return;
         mBrowserBarDialog = TvBrowserBar.show(this, this);
         mBrowserBarDialog.setOnDismissListener(ignored -> mBrowserBarDialog = null);
@@ -365,8 +463,9 @@ public final class TvBraveActivity extends ChromeTabbedActivity
     }
 
     private void ensureFullscreenObserverRegistered() {
-        if (mFullscreenObserverRegistered || !mTvRuntimeEnabled || isFinishing()) return;
+        if (mFullscreenObserverRegistered || !mTvRuntimeEnabled || isFinishing() || mDestroyed) return;
         FullscreenManager fullscreenManager = getFullscreenManager();
+        if (fullscreenManager == null) return;
         fullscreenManager.addObserver(mFullscreenObserver);
         mFullscreenObserverRegistered = true;
         setTvFullscreenState(fullscreenManager.getPersistentFullscreenMode());
@@ -473,6 +572,7 @@ public final class TvBraveActivity extends ChromeTabbedActivity
         if (mRoot == null) return;
         mRoot.post(
                 () -> {
+                    if (mDestroyed || isFinishing()) return;
                     long now = SystemClock.uptimeMillis();
                     dispatchToBrowser(
                             new KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0, metaState));

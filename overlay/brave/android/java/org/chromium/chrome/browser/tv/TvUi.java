@@ -14,6 +14,7 @@ import android.view.Window;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.TextView;
 
 /** Lightweight native TV surfaces: no bitmap backdrops, blur or focus animations. */
 final class TvUi {
@@ -21,6 +22,7 @@ final class TvUi {
     static final int SURFACE = Color.rgb(30, 41, 59);
     static final int ACCENT = Color.rgb(125, 231, 207);
     static final int TEXT = Color.rgb(241, 245, 249);
+    static final int MUTED = Color.rgb(157, 174, 195);
 
     private TvUi() {}
 
@@ -28,7 +30,7 @@ final class TvUi {
         return Math.round(value * context.getResources().getDisplayMetrics().density);
     }
 
-    private static GradientDrawable background(Context context, boolean focused) {
+    static GradientDrawable background(Context context, boolean focused) {
         GradientDrawable shape = new GradientDrawable();
         shape.setColor(focused ? ACCENT : SURFACE);
         shape.setCornerRadius(dp(context, 12));
@@ -39,6 +41,8 @@ final class TvUi {
     static void styleButton(Context context, Button button) {
         button.setTextSize(18);
         button.setAllCaps(false);
+        button.setMaxLines(2);
+        button.setEllipsize(android.text.TextUtils.TruncateAt.END);
         button.setTextColor(TEXT);
         button.setBackground(background(context, false));
         button.setFocusable(true);
@@ -58,6 +62,34 @@ final class TvUi {
         styleButton(context, button);
         button.setOnClickListener(view -> action.run());
         return button;
+    }
+
+    static TextView text(Context context, String value, int size, int color) {
+        TextView label = new TextView(context);
+        label.setText(value);
+        label.setTextSize(size);
+        label.setTextColor(color);
+        label.setFocusable(false);
+        return label;
+    }
+
+    static LinearLayout column(Context context) {
+        LinearLayout column = new LinearLayout(context);
+        column.setOrientation(LinearLayout.VERTICAL);
+        int padding = dp(context, 24);
+        column.setPadding(padding, padding, padding, padding);
+        return column;
+    }
+
+    static void addPair(Context context, LinearLayout column, Button left, Button right) {
+        LinearLayout row = new LinearLayout(context);
+        LinearLayout.LayoutParams first = new LinearLayout.LayoutParams(0, -2, 1);
+        first.setMargins(0, dp(context, 4), dp(context, 6), dp(context, 4));
+        LinearLayout.LayoutParams second = new LinearLayout.LayoutParams(0, -2, 1);
+        second.setMargins(dp(context, 6), dp(context, 4), 0, dp(context, 4));
+        row.addView(left, first);
+        row.addView(right, second);
+        column.addView(row, new LinearLayout.LayoutParams(-1, -2));
     }
 
     static LinearLayout.LayoutParams row(Context context) {

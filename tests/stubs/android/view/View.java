@@ -21,6 +21,9 @@ public class View {
     protected void onDraw(Canvas c){}
     public int getWidth(){return 100;}
     public int getHeight(){return 100;}
+    public void measure(int w,int h){}
+    public int getMeasuredHeight(){return 100;}
+    public static class MeasureSpec { public static final int EXACTLY=1,AT_MOST=2; public static int makeMeasureSpec(int size,int mode){return size;} }
     public void setVisibility(int v){}
     public void setTranslationX(float x){}
     public void setTranslationY(float y){}

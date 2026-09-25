@@ -16,7 +16,32 @@ Mode cycles D-pad, Cursor, Scroll and is persisted in app preferences, read lazi
 
 Regression tests cover wheel source/axis/coordinates/recycling, repeat throttling, key-up suppression, fullscreen and text-input bypass, preference recreation, and tab selection after reorder/removal/profile-model changes.
 
-## Automated validation
+## Home, address entry and APK pipeline follow-up
+
+The TV toolbar now includes the current page title and security-formatted origin,
+a Home action and scrolling with flexible button heights. Home is a native text
+dashboard with two-column quick links and direct entry to Brave bookmarks and
+downloads; those destination screens remain upstream UI. New tabs open the
+dashboard after Chromium handles tab creation. Startup remains lazy to preserve
+the existing low-memory ANR workaround.
+
+Address entry uses a separate native dialog so D-pad editing is independent of
+cursor/scroll mode. Chromium canonicalizes web addresses and the active profile's
+TemplateUrlService supplies searches. Delayed search completion checks the tab,
+navigation, request generation and activity lifetime before loading. Scripts,
+intent URLs and local file URLs are rejected in this web address dialog. The
+cursor top-edge shortcut waits for key release and does not send an orphan key-up
+to the browser in cursor mode.
+
+`native-apk.yml` and `build-ci-apk.sh` add an explicitly dispatched native build on
+a labelled Linux runner. They verify the ABI, freshness, archive and Android APK
+signature before artifact upload; see [APK builds](APK_BUILDS.md). This is build
+infrastructure, not evidence that an APK has already been built. The editing
+environment's build attempt stops at the disk preflight (29 GiB free, 200 GiB
+required for a fresh checkout). Runner inventory is unavailable through the
+current GitHub connector; no suitable remote machine has been established.
+
+## Automated checks
 
 `./scripts/check.sh` runs Python patcher/source checks, Java cursor and updater tests, Android/Chromium stub compilation, memory/focus regression tests, Shields action tests, and shell/source checks. Stubs model API contracts; they do not prove APK compilation, Android layout, native filtering, or playback performance.
 
@@ -39,4 +64,9 @@ Status: **NOT RUN**. No APK was built in the editing environment (about 30 GB fr
 
 ## Remaining product work
 
-Real-device UI review, TV-specific downloads/history/bookmarks flows, release signing and full ARM32/ARM64 build validation remain. Native Scroll mode, a bounded text tab overview and global navigation preference persistence are implemented but still require packaged-device testing. This refresh must not be presented as a finished stable Google TV release.
+Real-device UI review, TV-specific downloads/history/bookmarks destination screens,
+release signing and full ARM32/ARM64 build validation remain. Home now links to
+the existing Brave downloads/bookmarks screens. Native Scroll mode, a bounded
+text tab overview and global navigation preference persistence are implemented
+but still require packaged-device testing. This refresh must not be presented as
+a finished stable Google TV release.

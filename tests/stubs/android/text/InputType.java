@@ -1,0 +1,2 @@
+package android.text;
+public interface InputType { int TYPE_CLASS_TEXT=1, TYPE_TEXT_VARIATION_URI=16; }

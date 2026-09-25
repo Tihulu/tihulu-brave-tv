@@ -1,0 +1,73 @@
+name: Build native TV APK
+
+# Only a maintainer's explicit dispatch can run code on the dedicated build machine.
+# Never run this self-hosted job for pull_request or pull_request_target events.
+on:
+  workflow_dispatch:
+    inputs:
+      architecture:
+        description: Android TV ABI (many Mi Boxes need ARM32)
+        type: choice
+        options: [arm, arm64, both]
+        default: both
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tihulu-native-apk
+  cancel-in-progress: false
+
+jobs:
+  native:
+    runs-on: [self-hosted, linux, x64, tihulu-android]
+    timeout-minutes: 1440
+    env:
+      REQUESTED_ARCH: ${{ inputs.architecture }}
+      CONFIGURED_WORKSPACE: ${{ vars.TIHULU_BUILD_WORKSPACE }}
+      BRAVE_GCLIENT_RECOVERY_JOBS: '4'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Select persistent build workspace
+        shell: bash
+        run: |
+          task_workspace="${CONFIGURED_WORKSPACE:-$HOME/.cache/tihulu-tv/brave-browser}"
+          if [[ "$task_workspace" != /* || "$task_workspace" == *$'\n'* ]]; then
+            echo 'TIHULU_BUILD_WORKSPACE must be an absolute path without newlines.' >&2
+            exit 2
+          fi
+          echo "BRAVE_TV_WORKSPACE=$task_workspace" >> "$GITHUB_ENV"
+      - name: Build requested native APKs
+        shell: bash
+        run: |
+          case "$REQUESTED_ARCH" in
+            arm) arches=(arm) ;;
+            arm64) arches=(arm64) ;;
+            both) arches=(arm arm64) ;;
+            *) exit 2 ;;
+          esac
+          for arch in "${arches[@]}"; do
+            ./scripts/build-ci-apk.sh "$arch"
+          done
+      - name: Upload APKs and checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: tihulu-tv-native-${{ inputs.architecture }}-${{ github.sha }}
+          path: out/apk/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+      - name: Build summary
+        shell: bash
+        run: |
+          {
+            echo '### Tihulu TV Browser APKs'
+            echo 'Download the artifact attached to this run and install the APK matching the TV ABI.'
+            echo 'Development builds; physical TV validation and production signing are still required.'
+            echo
+            echo '```text'
+            cat out/apk/*.sha256
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

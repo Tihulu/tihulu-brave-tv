@@ -25,6 +25,8 @@ javac -cp "$STUB_TMP" -d "$STUB_TMP" tests/java/org/chromium/chrome/browser/tv/T
 java -ea -cp "$STUB_TMP" org.chromium.chrome.browser.tv.TvShieldsPanelTest
 javac -cp "$STUB_TMP" -d "$STUB_TMP" tests/java/org/chromium/chrome/browser/tv/TvNavigationTest.java
 java -ea -cp "$STUB_TMP" org.chromium.chrome.browser.tv.TvNavigationTest
+javac -cp "$STUB_TMP" -d "$STUB_TMP" tests/java/org/chromium/chrome/browser/tv/TvAddressTest.java
+java -ea -cp "$STUB_TMP" org.chromium.chrome.browser.tv.TvAddressTest
 rm -rf "$STUB_TMP"
 
 echo '[4/6] Shell syntax'

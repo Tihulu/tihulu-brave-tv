@@ -24,6 +24,11 @@ The goal is to keep Brave's browser engine, Shields, tab model and Chromium comp
 
 **Early MVP / development preview.** The overlay and patch tooling are implemented, but a full Brave Android build still needs to be compiled and smoke-tested on real Google TV hardware before any release should be treated as stable.
 
+**Looking for an APK?** `Validate` only runs code tests. The new **Build native TV APK**
+workflow builds ARM32/ARM64 packages and uploads them as Actions artifacts on a
+suitable build machine. [Runner setup, build and download instructions](docs/APK_BUILDS.md).
+An APK is available only after that workflow succeeds; there is no stable release yet.
+
 ### MVP scope
 
 - [x] Android TV launcher entry
@@ -51,6 +56,14 @@ The goal is to keep Brave's browser engine, Shields, tab model and Chromium comp
 
 ## TV interface refresh (pending packaged-device validation)
 
+- Native **Home** dashboard with a large search action, quick links, tabs, Shields,
+  and shortcuts to Brave's existing bookmarks and downloads. Open Home from the TV
+  toolbar or after creating a tab. It performs no background site loads.
+- TV-sized **Search / Address** dialog with TV keyboard support. Search respects
+  the active profile's default engine. Addresses without a scheme use HTTPS;
+  enter `http://` explicitly for HTTP-only local services.
+- Current page title and origin in the toolbar, scrollable controls and flexible
+  button heights for enlarged fonts. Cursor-at-top opens controls on key release.
 - Two-row native toolbar with rounded dark surfaces and mint focus treatment. Labels never change when focus moves, so navigation-mode text stays correct.
 - Scrollable Controls, Tabs, About and Shields panels constrained to the display with 24 dp margins.
 - **Shields** opens actual Brave per-site settings: Standard, Aggressive, Off, and restore global defaults. Settings use the active tab's profile, including private browsing, and reload the affected page. Nothing is applied globally or silently on startup.

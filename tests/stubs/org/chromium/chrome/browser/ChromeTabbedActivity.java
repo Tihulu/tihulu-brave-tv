@@ -22,9 +22,13 @@ public class ChromeTabbedActivity extends Context {
         return fullscreenManager;
     }
 
-    public org.chromium.chrome.browser.tab.Tab getActivityTab(){return null;}
+    public org.chromium.chrome.browser.tab.Tab activeTab;
+    public boolean tabModelsReady;
+    public int lastMenuAction;
+    public org.chromium.chrome.browser.tab.Tab getActivityTab(){return activeTab;}
     public org.chromium.chrome.browser.tabmodel.TabModelSelector getTabModelSelector(){return new org.chromium.chrome.browser.tabmodel.TabModelSelector();}
-    public boolean areTabModelsInitialized(){return false;}
+    public boolean areTabModelsInitialized(){return tabModelsReady;}
+    public boolean onMenuOrKeyboardAction(int id, boolean fromMenu, Bundle data, Object motion){lastMenuAction=id;return true;}
     public boolean isFinishing() {
         return false;
     }
