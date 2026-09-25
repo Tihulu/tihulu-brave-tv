@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.ViewGroup;
@@ -23,6 +24,7 @@ public final class TextInputActivity extends Activity {
     static final String EXTRA_SUBMIT = "submit";
 
     private EditText editor;
+    private TextView diagnostics;
     private boolean finishedWithResult;
 
     @Override
@@ -74,6 +76,7 @@ public final class TextInputActivity extends Activity {
         editor.setTextColor(Color.WHITE);
         editor.setHintTextColor(TvUi.MUTED);
         editor.setTextSize(22f);
+        editor.setPrivateImeOptions("horizontalAlignment=center,fullWidthKeyboard");
         editor.setPadding(TvUi.dp(this, 18), 0, TvUi.dp(this, 18), 0);
         editor.setBackground(
                 TvUi.rounded(
@@ -102,6 +105,17 @@ public final class TextInputActivity extends Activity {
                         TvUi.dp(this, 68));
         root.addView(editor, editorParams);
 
+        diagnostics = TvUi.title(this, "", 12);
+        diagnostics.setTextColor(TvUi.MUTED);
+        diagnostics.setGravity(Gravity.CENTER_HORIZONTAL);
+        LinearLayout.LayoutParams diagnosticsParams =
+                new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT);
+        diagnosticsParams.setMargins(0, TvUi.dp(this, 12), 0, 0);
+        root.addView(diagnostics, diagnosticsParams);
+        updateDiagnostics("waiting for D-pad");
+
         editor.setOnEditorActionListener(
                 (v, actionId, event) -> {
                     boolean submit =
@@ -117,18 +131,85 @@ public final class TextInputActivity extends Activity {
                 });
 
         setContentView(root);
+        editor.requestFocus();
+    }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        ensureImeConnected();
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) ensureImeConnected();
+    }
+
+    private void ensureImeConnected() {
+        if (editor == null) return;
         editor.requestFocus();
         editor.postDelayed(
                 () -> {
+                    if (isFinishing() || editor == null || !editor.hasWindowFocus()) return;
                     InputMethodManager imm =
                             (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
                     if (imm != null) {
                         imm.restartInput(editor);
                         imm.showSoftInput(editor, InputMethodManager.SHOW_IMPLICIT);
                     }
+                    updateDiagnostics("IME reconnect requested");
                 },
-                250);
+                180);
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        int code = event.getKeyCode();
+        if (code == KeyEvent.KEYCODE_DPAD_LEFT
+                || code == KeyEvent.KEYCODE_DPAD_RIGHT
+                || code == KeyEvent.KEYCODE_DPAD_UP
+                || code == KeyEvent.KEYCODE_DPAD_DOWN
+                || code == KeyEvent.KEYCODE_DPAD_CENTER
+                || code == KeyEvent.KEYCODE_ENTER) {
+            String action =
+                    event.getAction() == KeyEvent.ACTION_DOWN ? "DOWN"
+                            : (event.getAction() == KeyEvent.ACTION_UP ? "UP" : "OTHER");
+            updateDiagnostics(
+                    KeyEvent.keyCodeToString(code)
+                            + " "
+                            + action
+                            + "  source=0x"
+                            + Integer.toHexString(event.getSource())
+                            + "  device="
+                            + event.getDeviceId()
+                            + "  scan="
+                            + event.getScanCode());
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    private void updateDiagnostics(String eventLine) {
+        if (diagnostics == null) return;
+
+        String ime =
+                Settings.Secure.getString(
+                        getContentResolver(),
+                        Settings.Secure.DEFAULT_INPUT_METHOD);
+        InputMethodManager imm =
+                (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        boolean active = imm != null && editor != null && imm.isActive(editor);
+        boolean accepting = imm != null && imm.isAcceptingText();
+
+        diagnostics.setText(
+                "IME: "
+                        + (ime == null ? "unknown" : ime)
+                        + "\nactive="
+                        + active
+                        + " acceptingText="
+                        + accepting
+                        + "\n"
+                        + eventLine);
     }
 
     private void finishWithResult(boolean submit) {
