@@ -19,6 +19,14 @@ STUB_TMP="$(mktemp -d)"
 find tests/stubs -name '*.java' -print0 | xargs -0 javac -d "$STUB_TMP" overlay/brave/android/java/org/chromium/chrome/browser/tv/*.java
 javac -cp "$STUB_TMP" -d "$STUB_TMP" tests/java/org/chromium/chrome/browser/tv/TvGitHubUpdaterTest.java
 java -ea -cp "$STUB_TMP" org.chromium.chrome.browser.tv.TvGitHubUpdaterTest
+javac -cp "$STUB_TMP" -d "$STUB_TMP" tests/java/org/chromium/chrome/browser/tv/TvRuntimePolicyTest.java
+java -ea -cp "$STUB_TMP" org.chromium.chrome.browser.tv.TvRuntimePolicyTest
+javac -cp "$STUB_TMP" -d "$STUB_TMP" tests/java/org/chromium/chrome/browser/tv/TvShieldsPanelTest.java
+java -ea -cp "$STUB_TMP" org.chromium.chrome.browser.tv.TvShieldsPanelTest
+javac -cp "$STUB_TMP" -d "$STUB_TMP" tests/java/org/chromium/chrome/browser/tv/TvNavigationTest.java
+java -ea -cp "$STUB_TMP" org.chromium.chrome.browser.tv.TvNavigationTest
+javac -cp "$STUB_TMP" -d "$STUB_TMP" tests/java/org/chromium/chrome/browser/tv/TvAddressTest.java
+java -ea -cp "$STUB_TMP" org.chromium.chrome.browser.tv.TvAddressTest
 rm -rf "$STUB_TMP"
 
 echo '[4/6] Shell syntax'

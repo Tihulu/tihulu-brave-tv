@@ -1,0 +1,66 @@
+name: Check GitHub build capacity
+
+# A small, read-only check on the standard public-repository runner. It does not
+# provision a larger runner, download Chromium, remove tools or build an APK.
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/tv-ui-low-memory]
+    paths: [.github/workflows/runner-capacity.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  capacity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Measure disk, RAM and potential tool cleanup
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          gib = 1024 ** 3
+          volumes = {}
+          for value in ["/", "/mnt", os.environ["GITHUB_WORKSPACE"]]:
+              path = Path(value)
+              if not path.exists():
+                  path = path.parent
+              if not path.exists():
+                  continue
+              device = str(path.stat().st_dev)
+              stats = os.statvfs(path)
+              volumes.setdefault(device, {
+                  "path": str(path),
+                  "total_gib": round(stats.f_blocks * stats.f_frsize / gib, 2),
+                  "free_gib": round(stats.f_bavail * stats.f_frsize / gib, 2),
+              })
+          reclaimable = {}
+          for value in ["/usr/local/lib/android", "/usr/share/dotnet", "/opt/ghc",
+                        "/opt/hostedtoolcache/CodeQL", "/usr/local/share/powershell"]:
+              if not Path(value).exists():
+                  continue
+              result = subprocess.run(["du", "-sk", value], text=True,
+                                      capture_output=True, timeout=90)
+              if result.returncode == 0:
+                  reclaimable[value] = round(int(result.stdout.split()[0]) * 1024 / gib, 2)
+          memory = next(line for line in Path("/proc/meminfo").read_text().splitlines()
+                        if line.startswith("MemTotal:"))
+          report = {
+              "runner": "ubuntu-24.04", "cpus": os.cpu_count(),
+              "ram_gib": round(int(memory.split()[1]) * 1024 / gib, 2),
+              "volumes": list(volumes.values()),
+              "potential_tool_cleanup_gib": reclaimable,
+              "tools_removed": False, "apk_build_attempted": False,
+          }
+          print("TIHULU_RUNNER_CAPACITY=" + json.dumps(report, sort_keys=True))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+              summary.write("### Standard GitHub runner capacity\n\n")
+              summary.write("Observed for this run, not a promised runner specification.\n\n")
+              summary.write("```json\n" + json.dumps(report, indent=2) + "\n```\n")
+          PY

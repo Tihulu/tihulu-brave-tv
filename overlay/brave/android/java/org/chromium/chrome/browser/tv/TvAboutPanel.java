@@ -21,7 +21,7 @@ import org.chromium.chrome.R;
 final class TvAboutPanel {
     private TvAboutPanel() {}
 
-    static void show(Context context, Runnable onCheckForUpdates, Runnable onCheckBraveUpstream) {
+    static Dialog show(Context context, Runnable onCheckForUpdates, Runnable onCheckBraveUpstream) {
         Dialog dialog = new Dialog(context);
         LinearLayout column = new LinearLayout(context);
         column.setOrientation(LinearLayout.VERTICAL);
@@ -33,7 +33,7 @@ final class TvAboutPanel {
         logo.setImageResource(R.drawable.tihulu_tv_icon);
         logo.setContentDescription("Tihulu TV Browser logo");
         LinearLayout.LayoutParams logoParams =
-                new LinearLayout.LayoutParams(dp(context, 156), dp(context, 156));
+                new LinearLayout.LayoutParams(dp(context, 72), dp(context, 72));
         column.addView(logo, logoParams);
 
         TextView title = new TextView(context);
@@ -45,7 +45,7 @@ final class TvAboutPanel {
 
         TextView engine = new TextView(context);
         engine.setText("Based on Brave & Chromium");
-        engine.setTextColor(Color.rgb(255, 64, 72));
+        engine.setTextColor(TvUi.ACCENT);
         engine.setTextSize(18);
         column.addView(engine, matchWrap());
 
@@ -77,6 +77,7 @@ final class TvAboutPanel {
         column.addView(description, matchWrap());
 
         Button update = new Button(context);
+        TvUi.styleButton(context, update);
         update.setText("Check for Tihulu updates");
         update.setOnClickListener(
                 v -> {
@@ -86,6 +87,7 @@ final class TvAboutPanel {
         column.addView(update, matchWrap());
 
         Button brave = new Button(context);
+        TvUi.styleButton(context, brave);
         brave.setText("Check Brave upstream");
         brave.setOnClickListener(
                 v -> {
@@ -104,20 +106,19 @@ final class TvAboutPanel {
         column.addView(safety, matchWrap());
 
         Button close = new Button(context);
+        TvUi.styleButton(context, close);
         close.setText("Close");
         close.setOnClickListener(v -> dialog.dismiss());
         column.addView(close, matchWrap());
 
-        dialog.setContentView(column);
+        TvUi.setPanelContent(context, dialog, column);
         dialog.setOnShowListener(
                 ignored -> {
-                    if (dialog.getWindow() != null) {
-                        dialog.getWindow().setLayout(
-                                dp(context, 620), ViewGroup.LayoutParams.WRAP_CONTENT);
-                    }
+                    TvUi.sizePanel(context, dialog, 640);
                     update.requestFocus();
                 });
         dialog.show();
+        return dialog;
     }
 
     private static LinearLayout.LayoutParams matchWrap() {

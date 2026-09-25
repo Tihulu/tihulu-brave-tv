@@ -8,12 +8,14 @@ The goal is to keep Brave's browser engine, Shields, tab model and Chromium comp
 
 - **D-pad mode** using Chromium/Blink's native spatial navigation.
 - **Cursor mode** where the remote D-pad moves a virtual mouse pointer and OK clicks.
+- **Scroll mode** with native wheel events at the pointer and OK to return to controls.
+- **Persistent navigation mode** and an eight-at-a-time text tab overview without thumbnails.
 - **TV-first browser bar** with large Back, Forward, Reload, Search/Address, Tabs and TV Controls actions.
 - **TV controls panel** for changing navigation mode, opening the address bar/keyboard and re-centering the pointer.
 - **Tihulu branding** with a dedicated launcher icon, Android TV banner and About panel.
 - **Android TV launcher support** through `LEANBACK_LAUNCHER`.
 - TV-friendly hardware declarations so a touchscreen is not required.
-- **32-bit memory protection** using Chromium's supported low-end device mode without weakening Site Isolation or the renderer sandbox/process model.
+- **32-bit and 2 GB memory protection** using Chromium's supported low-end device mode without weakening Site Isolation or the renderer sandbox/process model.
 
 > [!IMPORTANT]
 > This is an **unofficial community project**. It is not affiliated with, endorsed by, or distributed by Brave Software. The app name used by this project is **Tihulu TV Browser**. Brave and Chromium trademarks belong to their respective owners.
@@ -21,6 +23,11 @@ The goal is to keep Brave's browser engine, Shields, tab model and Chromium comp
 ## Project status
 
 **Early MVP / development preview.** The overlay and patch tooling are implemented, but a full Brave Android build still needs to be compiled and smoke-tested on real Google TV hardware before any release should be treated as stable.
+
+**Looking for an APK?** `Validate` only runs code tests. The new **Build native TV APK**
+workflow builds ARM32/ARM64 packages and uploads them as Actions artifacts on a
+suitable build machine. [Runner setup, build and download instructions](docs/APK_BUILDS.md).
+An APK is available only after that workflow succeeds; there is no stable release yet.
 
 ### MVP scope
 
@@ -31,7 +38,7 @@ The goal is to keep Brave's browser engine, Shields, tab model and Chromium comp
 - [x] D-pad / cursor navigation modes
 - [x] Virtual pointer overlay, lazy-loaded when Cursor mode is used
 - [x] Remote OK-to-click in cursor mode
-- [x] Always-visible TV browser bar with large focus targets
+- [x] On-demand two-row TV browser bar with large focus targets
 - [x] TV tab-control panel
 - [x] TV controls dialog
 - [x] Address-bar / TV keyboard shortcut
@@ -46,6 +53,24 @@ The goal is to keep Brave's browser engine, Shields, tab model and Chromium comp
 - [ ] Rich tab cards with live titles/thumbnails
 - [ ] TV-optimized downloads UI
 - [ ] Release signing / Play TV packaging
+
+## TV interface refresh (pending packaged-device validation)
+
+- Native **Home** dashboard with a large search action, quick links, tabs, Shields,
+  and shortcuts to Brave's existing bookmarks and downloads. Open Home from the TV
+  toolbar or after creating a tab. It performs no background site loads.
+- TV-sized **Search / Address** dialog with TV keyboard support. Search respects
+  the active profile's default engine. Addresses without a scheme use HTTPS;
+  enter `http://` explicitly for HTTP-only local services.
+- Current page title and origin in the toolbar, scrollable controls and flexible
+  button heights for enlarged fonts. Cursor-at-top opens controls on key release.
+- Two-row native toolbar with rounded dark surfaces and mint focus treatment. Labels never change when focus moves, so navigation-mode text stays correct.
+- Scrollable Controls, Tabs, About and Shields panels constrained to the display with 24 dp margins.
+- **Shields** opens actual Brave per-site settings: Standard, Aggressive, Off, and restore global defaults. Settings use the active tab's profile, including private browsing, and reload the affected page. Nothing is applied globally or silently on startup.
+- 64-bit TVs with at most 2 GiB physical RAM get Chromium's low-end profile even if the vendor omitted Android's low-RAM flag. ARM32 still always gets that profile.
+- Native text editing keeps arrow/OK events in cursor mode. Fullscreen observation begins on first TV input; secondary panels are dismissed on fullscreen entry and activity destruction.
+
+These are source changes, **not a claim of a tested APK**. See [validation and device acceptance](docs/TV_REFRESH.md). Brave filters are preserved, but blocking every video advertisement is not guaranteed.
 
 ## Choose the correct Android TV architecture first
 
@@ -69,7 +94,7 @@ Chromium already contains a spatial-navigation mode intended for devices without
 
 ## 32-bit / low-RAM policy
 
-A 32-bit browser process has a much tighter virtual address space than a 64-bit browser process. Tihulu therefore enables Chromium's own `enable-low-end-device-mode` when the TV browser process is 32-bit. A 64-bit process also gets the profile when Android marks the device as low-RAM.
+A 32-bit browser process has a much tighter virtual address space than a 64-bit browser process. Tihulu therefore enables Chromium's own `enable-low-end-device-mode` when the TV browser process is 32-bit. A 64-bit process also gets the profile when Android marks the device as low-RAM or reports at most 2 GiB of total physical RAM.
 
 This is intentionally conservative. Tihulu does **not** use `--single-process`, `--process-per-site`, or an artificial renderer-process limit just to reduce RAM; those shortcuts can hurt isolation, stability, or compatibility. The virtual cursor is also created only when Cursor mode is selected.
 
@@ -334,7 +359,7 @@ The TV launcher entry is **Tihulu TV Browser**.
 | --- | --- |
 | Up / Down / Left / Right | Chromium native spatial navigation |
 | OK / Enter | Activate the focused page/UI element |
-| Long-press OK | Focus the TV browser bar |
+| Hold Up, then release | Open the TV browser bar |
 | Back | Browser back / normal Android back behavior |
 | Menu, Info or Guide | Open TV Controls |
 
@@ -346,11 +371,11 @@ When a focused HTML text field is activated, Android's normal TV IME (for exampl
 | --- | --- |
 | Up / Down / Left / Right | Move virtual cursor |
 | OK / Enter | Mouse click at cursor position |
-| Long-press OK | Focus the TV browser bar |
+| Hold Up, then release | Open the TV browser bar |
 | Back | Normal browser back behavior |
 | Menu, Info or Guide | Open TV Controls |
 
-The always-visible TV browser bar contains large focusable actions for **Back**, **Forward**, **Reload**, **Search / Address**, **Tabs** and **TV Controls**. It deliberately uses stable Android/Chromium input paths rather than depending on private Brave toolbar APIs.
+The on-demand TV browser bar contains large focusable actions for **Back**, **Forward**, **Reload**, **Search / Address**, **Tabs** and **TV Controls**. It deliberately uses stable Android/Chromium input paths rather than depending on private Brave toolbar APIs.
 
 The TV Controls dialog includes:
 

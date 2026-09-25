@@ -15,6 +15,7 @@ import android.view.Window;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.ScrollView;
 
 /**
  * Remote-first browser chrome presented in its own top-anchored Dialog window.
@@ -30,26 +31,34 @@ final class TvBrowserBar extends LinearLayout {
         void reloadPage();
         void focusAddressBar();
         void showTabs();
+        void showShields();
         void showTvControls();
+        void showHome();
+        String pageTitle();
+        String pageOrigin();
         void toggleNavigationMode();
         TvNavigationMode navigationMode();
     }
-
-    private static final int NORMAL_BG = Color.rgb(42, 42, 46);
-    private static final int FOCUSED_BG = Color.rgb(218, 32, 40);
-    private static final int NORMAL_TEXT = Color.rgb(232, 232, 236);
-    private static final int FOCUSED_TEXT = Color.WHITE;
 
     private final Button mSearchButton;
     private final Button mModeButton;
 
     private TvBrowserBar(Context context, Dialog dialog, Callback callback) {
         super(context);
-        setOrientation(0);
-        int pad = dp(context, 8);
+        setOrientation(LinearLayout.VERTICAL);
+        int pad = dp(context, 16);
         setPadding(pad, pad, pad, pad);
-        setBackgroundColor(Color.rgb(18, 18, 20));
+        setBackgroundColor(TvUi.BACKGROUND);
         setFocusable(false);
+
+        TextView title = TvUi.text(context, callback.pageTitle(), 22, TvUi.TEXT);
+        title.setMaxLines(1);
+        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        addView(title, TvUi.row(context));
+        TextView origin = TvUi.text(context, callback.pageOrigin(), 14, TvUi.MUTED);
+        origin.setMaxLines(1);
+        origin.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        addView(origin, TvUi.row(context));
 
         Button back = actionButton(context, "← Back", () -> runAndDismiss(dialog, callback::goBack));
         Button forward =
@@ -79,37 +88,47 @@ final class TvBrowserBar extends LinearLayout {
                         () -> runAndDismiss(dialog, callback::showTvControls));
         Button close = actionButton(context, "✕ Close", dialog::dismiss);
 
-        addView(back, buttonLayout(context, 0.85f));
-        addView(forward, buttonLayout(context, 0.95f));
-        addView(reload, buttonLayout(context, 0.9f));
-        addView(mSearchButton, buttonLayout(context, 1.45f));
-        addView(tabs, buttonLayout(context, 0.8f));
-        addView(mModeButton, buttonLayout(context, 1.15f));
-        addView(menu, buttonLayout(context, 0.8f));
-        addView(close, buttonLayout(context, 0.8f));
+        LinearLayout primary = new LinearLayout(context);
+        primary.addView(mSearchButton, buttonLayout(context, 2));
+        primary.addView(actionButton(context, "Shields", () -> runAndDismiss(dialog, callback::showShields)), buttonLayout(context, 1));
+        primary.addView(tabs, buttonLayout(context, 1));
+        primary.addView(actionButton(context, "Home", () -> runAndDismiss(dialog, callback::showHome)), buttonLayout(context, 1));
+        addView(primary, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout secondary = new LinearLayout(context);
+        secondary.addView(back, buttonLayout(context, 1));
+        secondary.addView(forward, buttonLayout(context, 1));
+        secondary.addView(reload, buttonLayout(context, 1));
+        secondary.addView(mModeButton, buttonLayout(context, 1.4f));
+        secondary.addView(menu, buttonLayout(context, 1));
+        addView(secondary, new LinearLayout.LayoutParams(-1, -2));
+        addView(close, TvUi.row(context));
     }
 
     static Dialog show(Context context, Callback callback) {
         Dialog dialog = new Dialog(context);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
 
         LinearLayout shell = new LinearLayout(context);
         shell.setOrientation(LinearLayout.VERTICAL);
-        shell.setBackgroundColor(Color.rgb(18, 18, 20));
+        shell.setBackgroundColor(TvUi.BACKGROUND);
 
         TvBrowserBar bar = new TvBrowserBar(context, dialog, callback);
+        ScrollView scroll = new ScrollView(context);
+        scroll.setFillViewport(true);
+        scroll.addView(bar);
         shell.addView(
-                bar,
+                scroll,
                 new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         TextView hint = new TextView(context);
         hint.setText(
-                "D-pad: move focus   ·   OK: select   ·   ↓/Back: close   ·   Mode button: Cursor/D-pad   ·   Hold ↑: open bar");
+                "OK: select   ·   Back: return to page   ·   Hold ↑ on page: open controls");
         hint.setTextColor(Color.rgb(205, 205, 210));
         hint.setTextSize(14);
         int hPad = dp(context, 14);
         hint.setPadding(hPad, 0, hPad, dp(context, 8));
-        shell.addView(
+        bar.addView(
                 hint,
                 new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -117,13 +136,13 @@ final class TvBrowserBar extends LinearLayout {
         dialog.setContentView(shell);
         dialog.setOnKeyListener(
                 (ignored, keyCode, event) -> {
-                    if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
-                    if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN
-                            || keyCode == KeyEvent.KEYCODE_BACK
+                    if (keyCode == KeyEvent.KEYCODE_BACK
                             || keyCode == KeyEvent.KEYCODE_MENU
                             || keyCode == KeyEvent.KEYCODE_INFO
                             || keyCode == KeyEvent.KEYCODE_GUIDE) {
-                        dialog.dismiss();
+                        if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) {
+                            dialog.dismiss();
+                        }
                         return true;
                     }
                     return false;
@@ -134,9 +153,15 @@ final class TvBrowserBar extends LinearLayout {
                     if (window != null) {
                         window.setGravity(Gravity.TOP);
                         window.setDimAmount(0.0f);
+                        android.util.DisplayMetrics metrics = context.getResources().getDisplayMetrics();
+                        int width = Math.min(dp(context, 960), Math.max(1, metrics.widthPixels - dp(context, 48)));
+                        int height = Math.max(1, metrics.heightPixels - dp(context, 48));
+                        // Measure the whole shell, including the footer, before bounding the scroll
+                        // area. Large accessibility fonts must not push controls off the display.
+                        shell.measure(android.view.View.MeasureSpec.makeMeasureSpec(width, android.view.View.MeasureSpec.EXACTLY),
+                                android.view.View.MeasureSpec.makeMeasureSpec(height, android.view.View.MeasureSpec.AT_MOST));
                         window.setLayout(
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                ViewGroup.LayoutParams.WRAP_CONTENT);
+                                width, Math.min(height, shell.getMeasuredHeight()));
                     }
                     bar.focusPrimaryAction();
                 });
@@ -153,28 +178,12 @@ final class TvBrowserBar extends LinearLayout {
     }
 
     private static String modeLabel(TvNavigationMode mode) {
-        return mode == TvNavigationMode.CURSOR ? "Mode: Cursor" : "Mode: D-pad";
+        return "Mode: " + mode.label();
     }
 
     private static Button actionButton(Context context, String label, Runnable action) {
-        Button button = new Button(context);
-        button.setText(label);
-        button.setTextSize(18);
-        button.setTextColor(NORMAL_TEXT);
-        button.setBackgroundColor(NORMAL_BG);
-        button.setFocusable(true);
-        button.setClickable(true);
-        button.setPadding(dp(context, 8), 0, dp(context, 8), 0);
-        button.setOnFocusChangeListener(
-                (view, focused) -> {
-                    // Avoid scale/animation transforms on low-end TV hardware. A strong color
-                    // change plus explicit chevrons is cheaper to paint and much easier to see
-                    // from a sofa than Android's default focus treatment.
-                    button.setBackgroundColor(focused ? FOCUSED_BG : NORMAL_BG);
-                    button.setTextColor(focused ? FOCUSED_TEXT : NORMAL_TEXT);
-                    button.setText(focused ? "▶ " + label + " ◀" : label);
-                });
-        button.setOnClickListener(v -> action.run());
+        Button button = TvUi.button(context, label, action);
+        button.setMinHeight(dp(context, 64));
         return button;
     }
 
@@ -184,7 +193,9 @@ final class TvBrowserBar extends LinearLayout {
     }
 
     private static LinearLayout.LayoutParams buttonLayout(Context context, float weight) {
-        return new LinearLayout.LayoutParams(0, dp(context, 64), weight);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, weight);
+        params.setMargins(dp(context, 4), dp(context, 4), dp(context, 4), dp(context, 4));
+        return params;
     }
 
     private static int dp(Context context, int value) {

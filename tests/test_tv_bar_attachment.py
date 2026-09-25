@@ -31,7 +31,7 @@ class TvBarAttachmentTests(unittest.TestCase):
             / "overlay/brave/android/java/org/chromium/chrome/browser/tv/TvBrowserBar.java"
         ).read_text(encoding="utf-8")
         self.assertIn("callback.toggleNavigationMode();", bar)
-        self.assertIn('return mode == TvNavigationMode.CURSOR ? "Mode: Cursor" : "Mode: D-pad";', bar)
+        self.assertIn('return "Mode: " + mode.label();', bar)
 
     def test_browser_bar_and_control_panel_are_dialog_backed(self):
         bar = (
@@ -46,7 +46,7 @@ class TvBarAttachmentTests(unittest.TestCase):
         self.assertIn("dialog.setContentView(shell);", bar)
         self.assertIn("dialog.show();", bar)
         self.assertIn("Dialog dialog = new Dialog(context);", panel)
-        self.assertIn("dialog.setContentView(column);", panel)
+        self.assertIn("TvUi.setPanelContent(context, dialog, column);", panel)
         self.assertIn("dialog.show();", panel)
 
 

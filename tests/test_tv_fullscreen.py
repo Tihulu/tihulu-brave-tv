@@ -22,7 +22,7 @@ class TvFullscreenTests(unittest.TestCase):
             "private void refreshTvOverlayVisibility", 1
         )[0]
         self.assertIn("dismissBrowserBar();", state)
-        self.assertIn("!mHtmlFullscreen && mNavigationMode == TvNavigationMode.CURSOR", self.activity)
+        self.assertIn("!mHtmlFullscreen && mNavigationMode != TvNavigationMode.DPAD", self.activity)
         self.assertIn("mCursorOverlay.setVisibility(showCursor ? View.VISIBLE : View.GONE);", self.activity)
 
     def test_fullscreen_remote_input_bypasses_tihulu_cursor_and_shortcuts(self):
