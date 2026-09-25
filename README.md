@@ -141,6 +141,20 @@ curl -fsSL https://raw.githubusercontent.com/Tihulu/tihulu-brave-tv/main/install
 
 The host setup installs the required packages, ensures Git 2.46+, installs a checksum-verified compatible Node.js 24 toolchain and pnpm >=11.9.0 when needed, initializes the pinned Brave/Chromium source tree, runs Chromium's Android dependency installer, applies/verifies the TV overlay and builds a Debug APK.
 
+
+### Build the ARM32 APK from GitHub Actions
+
+The repository also includes a manually triggered **Build ARM32 APK** workflow. Because a full Brave/Chromium checkout is much larger than a standard GitHub-hosted runner disk, the workflow runs on a Linux x64 **self-hosted runner** carrying the custom label `tihulu-brave-build`.
+
+After the build succeeds, GitHub Actions uploads:
+
+```text
+Tihulu-TV-Browser-arm32-debug.apk
+Tihulu-TV-Browser-arm32-debug.apk.sha256
+```
+
+The workflow keeps the large Brave/Chromium checkout outside the normal repository workspace so the same build machine can reuse it across runs. See [GitHub Actions ARM32 APK build](docs/GITHUB_ACTIONS_ARM32.md) for runner setup, optional large-disk configuration and artifact download instructions.
+
 Other supported architecture variants include:
 
 ```bash
