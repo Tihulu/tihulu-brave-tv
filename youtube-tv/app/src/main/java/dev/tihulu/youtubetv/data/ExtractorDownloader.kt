@@ -1,5 +1,6 @@
 package dev.tihulu.youtubetv.data
 
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.schabi.newpipe.extractor.downloader.Downloader
@@ -26,7 +27,7 @@ class ExtractorDownloader : Downloader() {
     )
 
     override fun execute(request: Request): Response {
-        val host = okhttp3.HttpUrl.get(request.url()).host
+        val host = request.url().toHttpUrl().host
         if (isBlocked(host)) {
             throw IOException("Blocked advertising/tracking host: $host")
         }
