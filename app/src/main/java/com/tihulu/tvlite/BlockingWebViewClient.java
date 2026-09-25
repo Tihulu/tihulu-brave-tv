@@ -56,8 +56,16 @@ final class BlockingWebViewClient extends WebViewClient {
     }
 
     @Override
+    public void onPageCommitVisible(WebView view, String url) {
+        adBlockEngine.injectCosmeticFiltering(view);
+        adBlockEngine.injectYouTubeFiltering(view);
+        super.onPageCommitVisible(view, url);
+    }
+
+    @Override
     public void onPageFinished(WebView view, String url) {
         adBlockEngine.injectCosmeticFiltering(view);
+        adBlockEngine.injectYouTubeFiltering(view);
         listener.onPageFinished(url);
     }
 }
