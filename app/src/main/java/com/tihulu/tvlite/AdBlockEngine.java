@@ -73,7 +73,7 @@ final class AdBlockEngine {
         if (!enabled) return;
         String script =
                 "(function(){"
-                + "if(document.getElementById('__tihulu_filter_css'))return;"
+                + "if(!document.getElementById('__tihulu_filter_css')){"
                 + "const s=document.createElement('style');s.id='__tihulu_filter_css';"
                 + "s.textContent='"
                 + "iframe[src*=\"doubleclick\"],iframe[src*=\"adservice\"],"
@@ -82,7 +82,68 @@ final class AdBlockEngine {
                 + ".adsbygoogle,.ad-container,.advertisement,.sponsored-ad,"
                 + ".taboola,.OUTBRAIN{display:none!important;visibility:hidden!important}'"
                 + ";(document.head||document.documentElement).appendChild(s);"
+                + "}"
                 + "})();";
+        webView.evaluateJavascript(script, null);
+    }
+
+    void injectYouTubeFiltering(WebView webView) {
+        if (!enabled) return;
+
+        String script =
+                "(function(){"
+                + "const h=(location.hostname||'').toLowerCase();"
+                + "if(!(h==='youtube.com'||h.endsWith('.youtube.com')))return;"
+                + "if(document.getElementById('__tihulu_youtube_css')==null){"
+                + "const s=document.createElement('style');s.id='__tihulu_youtube_css';"
+                + "s.textContent='"
+                + ".ytp-ad-module,.ytp-ad-overlay-container,.ytp-ad-player-overlay,"
+                + ".video-ads,ytd-ad-slot-renderer,ytd-display-ad-renderer,"
+                + "ytd-promoted-video-renderer,ytd-promoted-sparkles-web-renderer,"
+                + "ytd-in-feed-ad-layout-renderer,ytd-companion-slot-renderer,"
+                + "ytd-banner-promo-renderer,ytd-statement-banner-renderer{"
+                + "display:none!important;visibility:hidden!important;}'"
+                + ";(document.head||document.documentElement).appendChild(s);"
+                + "}"
+                + "if(window.__tihuluYouTubeAdGuard)return;"
+                + "window.__tihuluYouTubeAdGuard=true;"
+                + "let lastRun=0;"
+                + "const run=()=>{"
+                + "const now=Date.now();if(now-lastRun<250)return;lastRun=now;"
+                + "const selectors=["
+                + "'.ytp-skip-ad-button',"
+                + "'.ytp-ad-skip-button',"
+                + "'.ytp-ad-skip-button-modern',"
+                + "'button.ytp-ad-skip-button-modern',"
+                + "'.ytp-skip-ad-button__text',"
+                + "'[id*=\"skip-button\"] button'"
+                + "];"
+                + "for(const sel of selectors){"
+                + "const b=document.querySelector(sel);"
+                + "if(b&&b.offsetParent!==null){try{b.click();}catch(e){}}"
+                + "}"
+                + "document.querySelectorAll('ytd-ad-slot-renderer,ytd-display-ad-renderer,"
+                + "ytd-promoted-video-renderer,ytd-promoted-sparkles-web-renderer,"
+                + "ytd-in-feed-ad-layout-renderer,ytd-companion-slot-renderer').forEach(e=>{"
+                + "try{e.remove();}catch(x){}"
+                + "});"
+                + "const player=document.querySelector('.html5-video-player.ad-showing');"
+                + "if(player){"
+                + "const v=player.querySelector('video');"
+                + "if(v&&Number.isFinite(v.duration)&&v.duration>0&&v.duration<180){"
+                + "try{v.muted=true;v.playbackRate=16;"
+                + "if(v.currentTime<v.duration-0.25)v.currentTime=Math.max(0,v.duration-0.15);"
+                + "}catch(e){}"
+                + "}"
+                + "}"
+                + "};"
+                + "run();"
+                + "const root=document.documentElement||document.body;"
+                + "if(root){new MutationObserver(run).observe(root,{childList:true,subtree:true,attributes:true,"
+                + "attributeFilter:['class','style','aria-hidden']});}"
+                + "setInterval(run,900);"
+                + "})();";
+
         webView.evaluateJavascript(script, null);
     }
 
