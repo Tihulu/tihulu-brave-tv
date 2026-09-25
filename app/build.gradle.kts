@@ -10,8 +10,8 @@ android {
         applicationId = "com.tihulu.tvlite"
         minSdk = 23
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.3.0-brave-adblock"
+        versionCode = 6
+        versionName = "0.3.1-brave-adblock"
     }
 
     buildTypes {
