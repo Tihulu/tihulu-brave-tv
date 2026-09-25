@@ -157,6 +157,7 @@ public final class MainActivity extends Activity
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, false);
 
         webView.addJavascriptInterface(new WebInputBridge(), "__TihuluInput");
+        YouTubeAdGuard.install(webView);
         webView.setWebViewClient(new BlockingWebViewClient(adBlockEngine, this));
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
