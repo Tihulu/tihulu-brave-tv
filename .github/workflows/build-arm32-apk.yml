@@ -1,0 +1,142 @@
+name: Build ARM32 APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tihulu-arm32-apk
+  cancel-in-progress: false
+
+jobs:
+  build-arm32:
+    name: Build armeabi-v7a APK
+    runs-on: [self-hosted, linux, x64, tihulu-brave-build]
+    timeout-minutes: 1440
+
+    env:
+      BRAVE_GCLIENT_RECOVERY_JOBS: "4"
+      CONFIGURED_BRAVE_TV_WORKSPACE: ${{ vars.BRAVE_TV_WORKSPACE }}
+
+    steps:
+      - name: Check out Tihulu TV Browser
+        uses: actions/checkout@v7
+
+      - name: Select persistent Brave workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -n "${CONFIGURED_BRAVE_TV_WORKSPACE:-}" ]]; then
+            workspace="$CONFIGURED_BRAVE_TV_WORKSPACE"
+          else
+            workspace="$HOME/.cache/tihulu-brave-tv/brave-browser"
+          fi
+
+          mkdir -p "$workspace"
+          workspace="$(cd "$workspace" && pwd -P)"
+
+          if [[ "$workspace" == "$GITHUB_WORKSPACE" || "$workspace" == "$GITHUB_WORKSPACE/"* ]]; then
+            echo "::error::BRAVE_TV_WORKSPACE must be outside GITHUB_WORKSPACE so actions/checkout cannot delete the large Brave/Chromium checkout on a later run."
+            exit 1
+          fi
+
+          echo "BRAVE_TV_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+          echo "Persistent Brave workspace: $workspace"
+
+      - name: Check build disk space
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          df -h "$BRAVE_TV_WORKSPACE"
+
+          free_kb="$(df -Pk "$BRAVE_TV_WORKSPACE" | awk 'NR==2 {print $4}')"
+          if [[ -d "$BRAVE_TV_WORKSPACE/src/.git" ]]; then
+            required_kb=$((60 * 1024 * 1024))
+            required_text="60 GiB"
+            mode="existing checkout"
+          else
+            required_kb=$((180 * 1024 * 1024))
+            required_text="180 GiB"
+            mode="fresh checkout"
+          fi
+
+          if (( free_kb < required_kb )); then
+            free_gib=$((free_kb / 1024 / 1024))
+            echo "::error::Only ${free_gib} GiB is free for a ${mode}. This workflow requires at least ${required_text} free before starting to avoid an incomplete Brave/Chromium checkout or build."
+            exit 1
+          fi
+
+      - name: Build ARM32 APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/build-apk-one-line.sh arm
+
+      - name: Collect and verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          apk="$(python3 scripts/find_apk.py "$BRAVE_TV_WORKSPACE/src/out" arm)"
+          mkdir -p dist
+          target="dist/Tihulu-TV-Browser-arm32-debug.apk"
+          cp "$apk" "$target"
+
+          python3 - "$target" <<'PY'
+          import sys
+          import zipfile
+
+          apk = sys.argv[1]
+          with zipfile.ZipFile(apk) as archive:
+              abis = sorted(
+                  {
+                      parts[1]
+                      for name in archive.namelist()
+                      if len((parts := name.split("/", 2))) == 3
+                      and parts[0] == "lib"
+                      and parts[1]
+                  }
+              )
+
+          print("Native ABIs:", ", ".join(abis))
+          if "armeabi-v7a" not in abis:
+              raise SystemExit("APK does not contain armeabi-v7a native libraries")
+          unexpected = set(abis) - {"armeabi-v7a"}
+          if unexpected:
+              raise SystemExit(
+                  "ARM32 artifact unexpectedly contains additional native ABIs: "
+                  + ", ".join(sorted(unexpected))
+              )
+          PY
+
+          sha256sum "$target" > "$target.sha256"
+          ls -lh "$target" "$target.sha256"
+
+      - name: Upload ARM32 APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: Tihulu-TV-Browser-arm32-${{ github.run_number }}
+          path: |
+            dist/Tihulu-TV-Browser-arm32-debug.apk
+            dist/Tihulu-TV-Browser-arm32-debug.apk.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+      - name: Write build summary
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo "## Tihulu TV Browser ARM32"
+            echo
+            echo "- Target ABI: `armeabi-v7a`"
+            echo "- Artifact: `Tihulu-TV-Browser-arm32-${GITHUB_RUN_NUMBER}`"
+            echo "- APK: `Tihulu-TV-Browser-arm32-debug.apk`"
+            echo
+            echo "Download the artifact from this workflow run's Artifacts section."
+          } >> "$GITHUB_STEP_SUMMARY"
