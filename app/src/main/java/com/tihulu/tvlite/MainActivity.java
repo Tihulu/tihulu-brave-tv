@@ -63,6 +63,8 @@ public final class MainActivity extends Activity
 
     private View customView;
     private WebChromeClient.CustomViewCallback customViewCallback;
+    private LinearLayout fullscreenControls;
+    private Button fullscreenPlayPause;
 
     private static final class TabState {
         String url;
@@ -710,23 +712,120 @@ public final class MainActivity extends Activity
             callback.onCustomViewHidden();
             return;
         }
+
         customView = view;
         customViewCallback = callback;
         webContainer.setVisibility(View.GONE);
-        root.addView(view, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT));
+
+        root.addView(
+                view,
+                new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT));
+
+        fullscreenControls = new LinearLayout(this);
+        fullscreenControls.setOrientation(LinearLayout.HORIZONTAL);
+        fullscreenControls.setGravity(Gravity.CENTER);
+        fullscreenControls.setPadding(
+                TvUi.dp(this, 12),
+                TvUi.dp(this, 10),
+                TvUi.dp(this, 12),
+                TvUi.dp(this, 10));
+        fullscreenControls.setBackground(
+                TvUi.rounded(
+                        0xDD18181C,
+                        TvUi.dp(this, 18),
+                        Color.TRANSPARENT,
+                        0));
+
+        Button back10 = TvUi.button(this, "−10s");
+        fullscreenPlayPause = TvUi.button(this, "Play/Pause");
+        Button forward10 = TvUi.button(this, "+10s");
+        Button exit = TvUi.button(this, "Exit");
+
+        back10.setId(View.generateViewId());
+        fullscreenPlayPause.setId(View.generateViewId());
+        forward10.setId(View.generateViewId());
+        exit.setId(View.generateViewId());
+
+        Button[] buttons = {back10, fullscreenPlayPause, forward10, exit};
+        for (Button button : buttons) {
+            LinearLayout.LayoutParams p =
+                    new LinearLayout.LayoutParams(
+                            TvUi.dp(this, 150),
+                            TvUi.dp(this, 58));
+            p.setMargins(
+                    TvUi.dp(this, 5),
+                    0,
+                    TvUi.dp(this, 5),
+                    0);
+            fullscreenControls.addView(button, p);
+        }
+
+        back10.setNextFocusRightId(fullscreenPlayPause.getId());
+        fullscreenPlayPause.setNextFocusLeftId(back10.getId());
+        fullscreenPlayPause.setNextFocusRightId(forward10.getId());
+        forward10.setNextFocusLeftId(fullscreenPlayPause.getId());
+        forward10.setNextFocusRightId(exit.getId());
+        exit.setNextFocusLeftId(forward10.getId());
+
+        back10.setOnClickListener(v -> controlFullscreenVideo("seekBack"));
+        fullscreenPlayPause.setOnClickListener(v -> controlFullscreenVideo("toggle"));
+        forward10.setOnClickListener(v -> controlFullscreenVideo("seekForward"));
+        exit.setOnClickListener(v -> exitFullscreen());
+
+        FrameLayout.LayoutParams controlsParams =
+                new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        controlsParams.setMargins(
+                0,
+                0,
+                0,
+                TvUi.dp(this, 26));
+        root.addView(fullscreenControls, controlsParams);
+
+        fullscreenPlayPause.post(fullscreenPlayPause::requestFocus);
+    }
+
+    private void controlFullscreenVideo(String action) {
+        if (webView == null) return;
+
+        String script =
+                "(function(){"
+                + "const videos=[...document.querySelectorAll('video')];"
+                + "const v=videos.find(x=>!x.paused)||videos[0];"
+                + "if(!v)return;"
+                + "switch('" + action + "'){"
+                + "case 'toggle':if(v.paused)v.play();else v.pause();break;"
+                + "case 'seekBack':v.currentTime=Math.max(0,(v.currentTime||0)-10);break;"
+                + "case 'seekForward':"
+                + "const d=Number.isFinite(v.duration)?v.duration:1e15;"
+                + "v.currentTime=Math.min(d,(v.currentTime||0)+10);break;"
+                + "}"
+                + "})();";
+        webView.evaluateJavascript(script, null);
     }
 
     private void exitFullscreen() {
         if (customView == null) return;
+
+        if (fullscreenControls != null) {
+            root.removeView(fullscreenControls);
+            fullscreenControls = null;
+            fullscreenPlayPause = null;
+        }
+
         root.removeView(customView);
         customView = null;
         webContainer.setVisibility(View.VISIBLE);
+
         if (customViewCallback != null) {
             customViewCallback.onCustomViewHidden();
             customViewCallback = null;
         }
+
         webView.requestFocus();
     }
 
