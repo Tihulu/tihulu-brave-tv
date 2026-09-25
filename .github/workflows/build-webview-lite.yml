@@ -5,8 +5,11 @@ on:
   push:
     branches:
       - experiment/webview-lite
+      - experiment/brave-adblock-rust
     paths:
       - "app/**"
+      - "native/**"
+      - "scripts/fetch-brave-adblock-data.sh"
       - "build.gradle.kts"
       - "settings.gradle.kts"
       - "gradle.properties"
@@ -18,7 +21,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Check out experiment
@@ -35,6 +38,39 @@ jobs:
         with:
           gradle-version: "8.9"
 
+      - name: Fetch Brave-compatible filter data
+        if: github.ref_name == 'experiment/brave-adblock-rust'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/fetch-brave-adblock-data.sh
+
+      - name: Build adblock-rust for ARM32
+        if: github.ref_name == 'experiment/brave-adblock-rust'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rustup target add armv7-linux-androideabi
+          cargo install cargo-ndk --locked
+
+          if [[ -z "${ANDROID_NDK_HOME:-}" ]]; then
+            ndk_root="$(find "${ANDROID_SDK_ROOT}/ndk" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+            if [[ -z "$ndk_root" ]]; then
+              echo "::error::No Android NDK found on the hosted runner."
+              exit 1
+            fi
+            export ANDROID_NDK_HOME="$ndk_root"
+          fi
+
+          rm -rf app/src/main/jniLibs
+          mkdir -p app/src/main/jniLibs
+
+          cargo ndk             -t armeabi-v7a             -o app/src/main/jniLibs             build             --manifest-path native/adblock/Cargo.toml             --release
+
+          test -f app/src/main/jniLibs/armeabi-v7a/libtihulu_adblock.so
+          ls -lh app/src/main/jniLibs/armeabi-v7a/libtihulu_adblock.so
+
       - name: Build debug APK
         shell: bash
         run: |
@@ -46,25 +82,37 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/Tihulu-TV-Browser-Lite-debug.apk
-          sha256sum dist/Tihulu-TV-Browser-Lite-debug.apk > dist/Tihulu-TV-Browser-Lite-debug.apk.sha256
-          echo "APK size:"
-          ls -lh dist/Tihulu-TV-Browser-Lite-debug.apk
 
-          if unzip -l dist/Tihulu-TV-Browser-Lite-debug.apk | grep -Eq 'lib/[^/]+/[^/]+\.so$'; then
-            echo "::warning::Native libraries were found in the Lite APK; inspect them before claiming architecture independence."
-            unzip -l dist/Tihulu-TV-Browser-Lite-debug.apk | grep -E 'lib/[^/]+/[^/]+\.so$' || true
+          if [[ "$GITHUB_REF_NAME" == "experiment/brave-adblock-rust" ]]; then
+            apk_name="Tihulu-TV-Browser-Lite-BraveAdblock-arm32-debug.apk"
           else
-            echo "No bundled native .so libraries: browser engine is supplied by Android System WebView."
+            apk_name="Tihulu-TV-Browser-Lite-debug.apk"
+          fi
+
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/$apk_name"
+          sha256sum "dist/$apk_name" > "dist/$apk_name.sha256"
+
+          echo "APK size:"
+          ls -lh "dist/$apk_name"
+
+          echo "Native libraries:"
+          unzip -l "dist/$apk_name" | grep -E 'lib/[^/]+/[^/]+\.so$' || true
+
+          if [[ "$GITHUB_REF_NAME" == "experiment/brave-adblock-rust" ]]; then
+            unzip -l "dist/$apk_name" | grep -q 'lib/armeabi-v7a/libtihulu_adblock.so'
+            if unzip -l "dist/$apk_name" | grep -E 'lib/(arm64-v8a|x86|x86_64)/'; then
+              echo "::error::Brave adblock experiment must remain ARM32-only."
+              exit 1
+            fi
           fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v7
         with:
-          name: Tihulu-TV-Browser-Lite-${{ github.run_number }}
+          name: Tihulu-TV-Browser-Lite-${{ github.ref_name == 'experiment/brave-adblock-rust' && 'BraveAdblock-ARM32' || 'WebView' }}-${{ github.run_number }}
           path: |
-            dist/Tihulu-TV-Browser-Lite-debug.apk
-            dist/Tihulu-TV-Browser-Lite-debug.apk.sha256
+            dist/*.apk
+            dist/*.sha256
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
@@ -75,7 +123,12 @@ jobs:
           {
             echo "## Tihulu TV Browser Lite"
             echo
-            echo "- Engine: Android System WebView"
-            echo "- APK: `Tihulu-TV-Browser-Lite-debug.apk`"
-            echo "- Artifact: `Tihulu-TV-Browser-Lite-${GITHUB_RUN_NUMBER}`"
+            echo "- Browser engine: Android System WebView"
+            if [[ "$GITHUB_REF_NAME" == "experiment/brave-adblock-rust" ]]; then
+              echo "- Adblock engine: Brave adblock-rust 0.13.3"
+              echo "- Native ABI: armeabi-v7a"
+              echo "- Filter sources: EasyList, EasyPrivacy, uBlock Origin, Brave"
+            else
+              echo "- Adblock engine: Java/WebView prototype"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
