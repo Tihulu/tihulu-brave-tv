@@ -21,13 +21,6 @@
         android:usesCleartextTraffic="false">
 
         <activity
-            android:name=".TextInputActivity"
-            android:exported="false"
-            android:excludeFromRecents="true"
-            android:screenOrientation="landscape"
-            android:windowSoftInputMode="stateAlwaysVisible|adjustResize" />
-
-        <activity
             android:name=".MainActivity"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|uiMode"
             android:exported="true"
