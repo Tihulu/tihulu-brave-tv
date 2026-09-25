@@ -75,6 +75,7 @@ final class BlockingWebViewClient extends WebViewClient {
     public void onPageCommitVisible(WebView view, String url) {
         if (url != null) currentPageUrl = url;
         adBlockEngine.injectCosmeticFiltering(view, currentPageUrl);
+        YouTubeAdGuard.injectFallback(view);
         listener.onPageCommitVisible(url);
         super.onPageCommitVisible(view, url);
     }
@@ -83,6 +84,7 @@ final class BlockingWebViewClient extends WebViewClient {
     public void onPageFinished(WebView view, String url) {
         if (url != null) currentPageUrl = url;
         adBlockEngine.injectCosmeticFiltering(view, currentPageUrl);
+        YouTubeAdGuard.injectFallback(view);
         listener.onPageFinished(url);
     }
 
