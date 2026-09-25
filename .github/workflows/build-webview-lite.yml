@@ -30,13 +30,17 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install Android platform
         shell: bash
         run: |
           set -euo pipefail
+          if ! command -v sdkmanager >/dev/null 2>&1; then
+            echo "::error::sdkmanager is not available on this GitHub-hosted runner."
+            echo "ANDROID_HOME=${ANDROID_HOME:-}"
+            echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-}"
+            exit 1
+          fi
+          yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Set up Gradle
