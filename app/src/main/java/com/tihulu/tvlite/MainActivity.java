@@ -21,6 +21,7 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.text.InputType;
 import android.webkit.CookieManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -58,6 +59,7 @@ public final class MainActivity extends Activity
     private Dialog browserBarDialog;
     private boolean upLongPressConsumed;
     private int currentTabIndex;
+    private volatile boolean webTextEditing;
 
     private View customView;
     private WebChromeClient.CustomViewCallback customViewCallback;
@@ -154,6 +156,7 @@ public final class MainActivity extends Activity
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, false);
 
+        webView.addJavascriptInterface(new WebInputBridge(), "__TihuluInput");
         webView.setWebViewClient(new BlockingWebViewClient(adBlockEngine, this));
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
@@ -203,9 +206,9 @@ public final class MainActivity extends Activity
     public boolean dispatchKeyEvent(KeyEvent event) {
         int keyCode = event.getKeyCode();
 
-        // When Android TV's system keyboard is visible/accepting text, it owns remote
-        // navigation. Do not reinterpret D-pad as page focus/cursor movement.
-        if (isSystemImeActive()
+        // When a web text field owns focus or Android TV's IME is active, the keyboard
+        // owns remote navigation. Do not reinterpret D-pad as page focus/cursor movement.
+        if ((webTextEditing || isSystemImeActive())
                 && (isDirectionalKey(keyCode)
                         || keyCode == KeyEvent.KEYCODE_DPAD_CENTER
                         || keyCode == KeyEvent.KEYCODE_ENTER
@@ -268,6 +271,48 @@ public final class MainActivity extends Activity
         }
 
         return super.dispatchKeyEvent(event);
+    }
+
+    private final class WebInputBridge {
+        @JavascriptInterface
+        public void setTextEditing(boolean editing) {
+            webTextEditing = editing;
+            runOnUiThread(MainActivity.this::updateStatus);
+        }
+    }
+
+    private void injectWebTextInputTracking() {
+        String script =
+                "(function(){"
+                + "if(window.__tihuluInputTrackingInstalled){"
+                + "if(window.__tihuluReportTextEditing)window.__tihuluReportTextEditing();"
+                + "return;}"
+                + "window.__tihuluInputTrackingInstalled=true;"
+                + "const editable=(n)=>{"
+                + "if(!n||n.nodeType!==1)return false;"
+                + "const tag=(n.tagName||'').toUpperCase();"
+                + "const type=(n.getAttribute&&n.getAttribute('type')||'').toLowerCase();"
+                + "if(tag==='TEXTAREA')return true;"
+                + "if(tag==='INPUT'&&!['button','submit','reset','checkbox','radio','file','range','color','image','hidden'].includes(type))return true;"
+                + "if(n.isContentEditable)return true;"
+                + "const role=(n.getAttribute&&n.getAttribute('role')||'').toLowerCase();"
+                + "return role==='textbox'||role==='searchbox'||role==='combobox';"
+                + "};"
+                + "const report=(ev)=>{"
+                + "let editing=false;"
+                + "try{"
+                + "const path=ev&&ev.composedPath?ev.composedPath():[];"
+                + "editing=path.some(editable)||editable(document.activeElement);"
+                + "}catch(e){}"
+                + "try{window.__TihuluInput.setTextEditing(!!editing);}catch(e){}"
+                + "};"
+                + "window.__tihuluReportTextEditing=()=>report(null);"
+                + "document.addEventListener('focusin',report,true);"
+                + "document.addEventListener('focusout',()=>setTimeout(()=>report(null),0),true);"
+                + "document.addEventListener('pointerdown',()=>setTimeout(()=>report(null),0),true);"
+                + "report(null);"
+                + "})();";
+        webView.evaluateJavascript(script, null);
     }
 
     private boolean isSystemImeActive() {
@@ -653,7 +698,9 @@ public final class MainActivity extends Activity
         String shield = adBlockEngine.isEnabled()
                 ? "Shield " + adBlockEngine.blockedCount()
                 : "Shield off";
-        String mode = navigationMode == NavigationMode.CURSOR ? "Cursor" : "D-pad";
+        String mode = webTextEditing
+                ? "Typing"
+                : (navigationMode == NavigationMode.CURSOR ? "Cursor" : "D-pad");
         status.setText(shield + "  ·  " + mode + "  ·  " + (currentTabIndex + 1) + "/" + tabs.size());
     }
 
@@ -741,7 +788,15 @@ public final class MainActivity extends Activity
 
     @Override
     public void onPageStarted(String url) {
+        webTextEditing = false;
         if (url != null) currentTab().url = url;
+        updateStatus();
+    }
+
+    @Override
+    public void onPageCommitVisible(String url) {
+        if (url != null) currentTab().url = url;
+        injectWebTextInputTracking();
         updateStatus();
     }
 
@@ -749,6 +804,7 @@ public final class MainActivity extends Activity
     public void onPageFinished(String url) {
         if (url != null) currentTab().url = url;
         injectTvFocusRing();
+        injectWebTextInputTracking();
         updateStatus();
     }
 }
