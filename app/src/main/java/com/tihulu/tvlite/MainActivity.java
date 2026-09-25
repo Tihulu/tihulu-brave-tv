@@ -3,6 +3,7 @@ package com.tihulu.tvlite;
 import android.app.Activity;
 import android.app.Dialog;
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Rect;
 import android.graphics.drawable.ColorDrawable;
@@ -47,6 +48,8 @@ public final class MainActivity extends Activity
     private static final float CURSOR_STEP_DP = 24f;
     private static final float CURSOR_REPEAT_ACCELERATION = 0.16f;
     private static final int CURSOR_MAX_ACCEL_REPEAT = 6;
+    private static final int REQUEST_TEXT_INPUT = 1701;
+    private static final String ADDRESS_INPUT_TOKEN = "__tihulu_address__";
 
     private final ArrayList<TabState> tabs = new ArrayList<>();
 
@@ -62,8 +65,7 @@ public final class MainActivity extends Activity
     private boolean upLongPressConsumed;
     private int currentTabIndex;
     private volatile boolean webTextEditing;
-    private Dialog nativeWebEditorDialog;
-    private String nativeWebEditorToken;
+    private String pendingTextInputToken;
 
     private View customView;
     private WebChromeClient.CustomViewCallback customViewCallback;
@@ -210,10 +212,6 @@ public final class MainActivity extends Activity
     public boolean dispatchKeyEvent(KeyEvent event) {
         int keyCode = event.getKeyCode();
 
-        if (nativeWebEditorDialog != null && nativeWebEditorDialog.isShowing()) {
-            return super.dispatchKeyEvent(event);
-        }
-
         // When a web text field owns focus or Android TV's IME is active, the keyboard
         // owns remote navigation. Do not reinterpret D-pad as page focus/cursor movement.
         if ((webTextEditing || isSystemImeActive())
@@ -286,52 +284,31 @@ public final class MainActivity extends Activity
         public void openNativeEditor(
                 String token, String value, String hint, String inputType) {
             runOnUiThread(
-                    () -> showNativeWebEditor(token, value, hint, inputType));
+                    () -> launchTextInputActivity(token, value, hint, inputType));
         }
     }
 
-    private void showNativeWebEditor(
+    private void launchTextInputActivity(
             String token, String value, String hint, String inputType) {
         if (token == null || token.isEmpty() || isFinishing()) return;
+        if (pendingTextInputToken != null) return;
 
-        if (nativeWebEditorDialog != null && nativeWebEditorDialog.isShowing()) {
-            if (token.equals(nativeWebEditorToken)) return;
-            nativeWebEditorDialog.dismiss();
-        }
-
-        nativeWebEditorToken = token;
+        pendingTextInputToken = token;
         webTextEditing = true;
         updateStatus();
 
-        nativeWebEditorDialog =
-                NativeWebEditorDialog.show(
-                        this,
-                        value,
-                        hint,
-                        inputType,
-                        new NativeWebEditorDialog.Callback() {
-                            @Override
-                            public void onTextChanged(String newValue) {
-                                syncNativeEditorToWeb(token, newValue, false);
-                            }
-
-                            @Override
-                            public void onSubmit(String newValue) {
-                                syncNativeEditorToWeb(token, newValue, true);
-                            }
-
-                            @Override
-                            public void onClosed(String newValue) {
-                                syncNativeEditorToWeb(token, newValue, false);
-                                releaseNativeWebEditor(token);
-                            }
-                        });
+        Intent intent = new Intent(this, TextInputActivity.class);
+        intent.putExtra(TextInputActivity.EXTRA_TOKEN, token);
+        intent.putExtra(TextInputActivity.EXTRA_VALUE, value == null ? "" : value);
+        intent.putExtra(TextInputActivity.EXTRA_HINT, hint == null ? "" : hint);
+        intent.putExtra(TextInputActivity.EXTRA_INPUT_TYPE, inputType == null ? "text" : inputType);
+        startActivityForResult(intent, REQUEST_TEXT_INPUT);
     }
 
-    private void syncNativeEditorToWeb(String token, String value, boolean submit) {
-        if (webView == null) return;
+    private void syncTextInputResultToWeb(String token, String value, boolean submit) {
+        if (webView == null || token == null || token.isEmpty()) return;
 
-        String tokenJson = JSONObject.quote(token == null ? "" : token);
+        String tokenJson = JSONObject.quote(token);
         String valueJson = JSONObject.quote(value == null ? "" : value);
 
         String script =
@@ -342,7 +319,7 @@ public final class MainActivity extends Activity
                 + "const nodes=document.querySelectorAll('[data-tihulu-editor-id]');"
                 + "let e=null;for(const n of nodes){"
                 + "if(n.dataset&&n.dataset.tihuluEditorId===token){e=n;break;}}"
-                + "if(!e)return;"
+                + "if(!e){window.__tihuluNativeEditorBusy=false;return;}"
                 + "try{"
                 + "const tag=(e.tagName||'').toUpperCase();"
                 + "if(tag==='INPUT'){"
@@ -355,37 +332,67 @@ public final class MainActivity extends Activity
                 + "try{e.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText'}));}"
                 + "catch(x){e.dispatchEvent(new Event('input',{bubbles:true}));}"
                 + "if(submit){"
+                + "try{e.focus({preventScroll:true});}catch(x){try{e.focus();}catch(y){}}"
                 + "for(const t of ['keydown','keypress','keyup']){"
                 + "try{e.dispatchEvent(new KeyboardEvent(t,{"
                 + "key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true,cancelable:true}));}"
                 + "catch(x){}}"
                 + "}"
                 + "}catch(x){}"
-                + "})();";
-
-        webView.post(() -> webView.evaluateJavascript(script, null));
-    }
-
-    private void releaseNativeWebEditor(String token) {
-        nativeWebEditorDialog = null;
-        nativeWebEditorToken = null;
-        webTextEditing = false;
-        updateStatus();
-
-        String tokenJson = JSONObject.quote(token == null ? "" : token);
-        String script =
-                "(function(){"
                 + "window.__tihuluNativeEditorBusy=false;"
-                + "const token=" + tokenJson + ";"
-                + "const nodes=document.querySelectorAll('[data-tihulu-editor-id]');"
-                + "for(const n of nodes){"
-                + "if(n.dataset&&n.dataset.tihuluEditorId===token){try{n.blur();}catch(e){}break;}}"
+                + "try{e.blur();}catch(x){}"
                 + "})();";
+
         webView.post(
                 () -> {
                     webView.evaluateJavascript(script, null);
                     webView.requestFocus();
                 });
+    }
+
+    @Override
+    protected void onActivityResult(
+            int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_TEXT_INPUT) return;
+
+        String token = pendingTextInputToken;
+        pendingTextInputToken = null;
+        webTextEditing = false;
+        updateStatus();
+
+        if (resultCode != RESULT_OK || data == null || token == null) {
+            resetWebEditorBusyFlag();
+            if (webView != null) webView.requestFocus();
+            return;
+        }
+
+        String returnedToken = data.getStringExtra(TextInputActivity.EXTRA_TOKEN);
+        String value = data.getStringExtra(TextInputActivity.EXTRA_VALUE);
+        boolean submit = data.getBooleanExtra(TextInputActivity.EXTRA_SUBMIT, false);
+
+        if (returnedToken != null && !returnedToken.isEmpty()) {
+            token = returnedToken;
+        }
+
+        if (ADDRESS_INPUT_TOKEN.equals(token)) {
+            if (submit && value != null && !value.trim().isEmpty()) {
+                navigate(value);
+            } else if (webView != null) {
+                webView.requestFocus();
+            }
+            return;
+        }
+
+        syncTextInputResultToWeb(token, value, submit);
+    }
+
+    private void resetWebEditorBusyFlag() {
+        if (webView == null) return;
+        webView.post(
+                () ->
+                        webView.evaluateJavascript(
+                                "window.__tihuluNativeEditorBusy=false;", null));
     }
 
     private void injectWebTextInputTracking() {
@@ -596,7 +603,12 @@ public final class MainActivity extends Activity
 
     @Override
     public void openAddress() {
-        showAddressDialog();
+        String current = webView == null || webView.getUrl() == null ? "" : webView.getUrl();
+        launchTextInputActivity(
+                ADDRESS_INPUT_TOKEN,
+                current,
+                "Search or enter address",
+                "url");
     }
 
     private void showAddressDialog() {
@@ -850,9 +862,7 @@ public final class MainActivity extends Activity
 
     @Override
     public void onBackPressed() {
-        if (nativeWebEditorDialog != null && nativeWebEditorDialog.isShowing()) {
-            nativeWebEditorDialog.dismiss();
-        } else if (customView != null) {
+        if (customView != null) {
             exitFullscreen();
         } else if (browserBarDialog != null && browserBarDialog.isShowing()) {
             browserBarDialog.dismiss();
@@ -894,7 +904,6 @@ public final class MainActivity extends Activity
 
     @Override
     protected void onDestroy() {
-        if (nativeWebEditorDialog != null) nativeWebEditorDialog.dismiss();
         if (browserBarDialog != null) browserBarDialog.dismiss();
         if (webView != null) {
             webView.stopLoading();
