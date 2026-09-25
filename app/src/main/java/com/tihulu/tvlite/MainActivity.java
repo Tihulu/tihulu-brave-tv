@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.Dialog;
 import android.content.Context;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Build;
 import android.os.Bundle;
@@ -15,6 +16,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
+import android.view.WindowInsets;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.text.InputType;
@@ -201,6 +203,16 @@ public final class MainActivity extends Activity
     public boolean dispatchKeyEvent(KeyEvent event) {
         int keyCode = event.getKeyCode();
 
+        // When Android TV's system keyboard is visible/accepting text, it owns remote
+        // navigation. Do not reinterpret D-pad as page focus/cursor movement.
+        if (isSystemImeActive()
+                && (isDirectionalKey(keyCode)
+                        || keyCode == KeyEvent.KEYCODE_DPAD_CENTER
+                        || keyCode == KeyEvent.KEYCODE_ENTER
+                        || keyCode == KeyEvent.KEYCODE_BACK)) {
+            return super.dispatchKeyEvent(event);
+        }
+
         if (event.getAction() == KeyEvent.ACTION_UP
                 && keyCode == KeyEvent.KEYCODE_DPAD_UP
                 && upLongPressConsumed) {
@@ -256,6 +268,28 @@ public final class MainActivity extends Activity
         }
 
         return super.dispatchKeyEvent(event);
+    }
+
+    private boolean isSystemImeActive() {
+        if (root == null) return false;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            WindowInsets insets = root.getRootWindowInsets();
+            if (insets != null && insets.isVisible(WindowInsets.Type.ime())) {
+                return true;
+            }
+        }
+
+        Rect visible = new Rect();
+        root.getWindowVisibleDisplayFrame(visible);
+        int rootHeight = root.getRootView().getHeight();
+        if (rootHeight > 0 && rootHeight - visible.bottom > TvUi.dp(this, 120)) {
+            return true;
+        }
+
+        InputMethodManager imm =
+                (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        return imm != null && imm.isActive() && imm.isAcceptingText();
     }
 
     private static boolean isDirectionalKey(int keyCode) {
@@ -422,9 +456,6 @@ public final class MainActivity extends Activity
         address.setTextSize(19f);
         address.setImeOptions(EditorInfo.IME_ACTION_GO);
         address.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            address.setShowSoftInputOnFocus(false);
-        }
         address.setPadding(TvUi.dp(this, 16), 0, TvUi.dp(this, 16), 0);
         address.setBackground(TvUi.rounded(TvUi.NORMAL, TvUi.dp(this, 14),
                 Color.TRANSPARENT, 0));
@@ -446,46 +477,6 @@ public final class MainActivity extends Activity
             dialog.dismiss();
             navigate(value);
         };
-
-        TvKeyboard.Result keyboard =
-                TvKeyboard.create(this, address, () -> submitHolder[0].run());
-        column.addView(keyboard.root, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        dialog.setOnKeyListener((d, keyCode, event) -> {
-            if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
-
-            View focused = dialog.getCurrentFocus();
-
-            if (keyCode == KeyEvent.KEYCODE_BACK) {
-                dialog.dismiss();
-                return true;
-            }
-
-            if (focused == address && keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-                address.clearFocus();
-                keyboard.firstKey.requestFocus();
-                return true;
-            }
-
-            if (keyboard.owns(focused)
-                    && (keyCode == KeyEvent.KEYCODE_DPAD_LEFT
-                            || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
-                            || keyCode == KeyEvent.KEYCODE_DPAD_UP
-                            || keyCode == KeyEvent.KEYCODE_DPAD_DOWN)) {
-                return keyboard.handleDirectional(focused, keyCode);
-            }
-
-            if (keyboard.owns(focused)
-                    && (keyCode == KeyEvent.KEYCODE_DPAD_CENTER
-                            || keyCode == KeyEvent.KEYCODE_ENTER)) {
-                focused.performClick();
-                return true;
-            }
-
-            return false;
-        });
 
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
@@ -512,20 +503,16 @@ public final class MainActivity extends Activity
             if (window != null) {
                 window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
                 window.setLayout(TvUi.dp(this, 820), ViewGroup.LayoutParams.WRAP_CONTENT);
-                window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
+                window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
             }
 
             address.requestFocus();
             address.selectAll();
-
-            // Some TV ROMs keep their IME window alive even after showSoftInputOnFocus(false).
-            // Force-hide it so D-pad events remain inside this dialog and our deterministic
-            // keyboard dispatcher always receives them.
-            address.post(() -> {
+            address.postDelayed(() -> {
                 InputMethodManager imm =
                         (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-                if (imm != null) imm.hideSoftInputFromWindow(address.getWindowToken(), 0);
-            });
+                if (imm != null) imm.showSoftInput(address, InputMethodManager.SHOW_IMPLICIT);
+            }, 120);
         });
         dialog.show();
     }
