@@ -20,7 +20,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
+import java.io.UnsupportedEncodingException;
 
 public final class MainActivity extends Activity implements BlockingWebViewClient.Listener {
     private WebView webView;
@@ -183,8 +183,12 @@ public final class MainActivity extends Activity implements BlockingWebViewClien
         } else if (text.contains(".") && !text.contains(" ")) {
             url = "https://" + text;
         } else {
-            url = "https://www.google.com/search?q="
-                    + URLEncoder.encode(text, StandardCharsets.UTF_8);
+            try {
+                url = "https://www.google.com/search?q="
+                        + URLEncoder.encode(text, "UTF-8");
+            } catch (UnsupportedEncodingException impossible) {
+                url = "https://www.google.com/search?q=" + text.replace(" ", "+");
+            }
         }
 
         webView.loadUrl(url);
