@@ -63,3 +63,36 @@ System WebView / Chromium already installed on TV
 ```
 
 The debug APK is architecture-independent at the application layer and is suitable for testing on 32-bit Android TV devices that provide a working System WebView implementation.
+
+
+## 0.2 TV UI and blocker update
+
+The Lite experiment now carries the low-end TV interaction fixes from the full Brave branch, adapted for WebView:
+
+- no permanently attached browser toolbar; hold **Up** and release, or press **Menu / Info / Guide**, to open the top TV bar;
+- high-contrast red focused actions with explicit `▶ ... ◀` markers and no scale animations;
+- D-pad repeat throttling to avoid expensive focus scans on every Android repeat event;
+- explicit **Mode: D-pad / Mode: Cursor** control instead of overloading long-OK;
+- cursor movement acceleration without synthetic hover-event storms; OK sends the actual touch click;
+- lightweight tab slots with previous/next/new/close controls;
+- TV-sized address/search dialog and keyboard focus;
+- fullscreen HTML5 video custom-view handling;
+- lifecycle save/restore for tabs, current tab and navigation mode;
+- a visible Shield counter and Ad blocker On/Off control.
+
+### Ad blocking
+
+Lite does not claim Brave Shields compatibility. It uses a WebView-specific blocker:
+
+1. packaged host/filter rules are checked in `WebViewClient.shouldInterceptRequest`;
+2. matching subresource requests are answered with an empty HTTP 204 response;
+3. common ad containers that remain in the DOM are hidden with a small cosmetic stylesheet;
+4. third-party cookies remain disabled by default.
+
+Rules live in:
+
+```text
+app/src/main/assets/adblock_rules.txt
+```
+
+The list is intentionally compact for the Lite experiment and can be expanded or replaced with a maintained filter-list update system later.
