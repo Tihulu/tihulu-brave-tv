@@ -14,9 +14,8 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
-import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
-import android.view.inputmethod.InputMethodManager;
+import android.text.InputType;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
@@ -420,6 +419,10 @@ public final class MainActivity extends Activity
         address.setHint("Search or URL");
         address.setTextSize(19f);
         address.setImeOptions(EditorInfo.IME_ACTION_GO);
+        address.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            address.setShowSoftInputOnFocus(false);
+        }
         address.setPadding(TvUi.dp(this, 16), 0, TvUi.dp(this, 16), 0);
         address.setBackground(TvUi.rounded(TvUi.NORMAL, TvUi.dp(this, 14),
                 Color.TRANSPARENT, 0));
@@ -435,25 +438,33 @@ public final class MainActivity extends Activity
         addressParams.setMargins(0, TvUi.dp(this, 14), 0, TvUi.dp(this, 12));
         column.addView(address, addressParams);
 
-        LinearLayout actions = new LinearLayout(this);
-        actions.setOrientation(LinearLayout.HORIZONTAL);
-        Button go = TvUi.button(this, "Go");
-        Button cancel = TvUi.button(this, "Cancel");
-        actions.addView(go, new LinearLayout.LayoutParams(0, TvUi.dp(this, 60), 1f));
-        actions.addView(cancel, new LinearLayout.LayoutParams(0, TvUi.dp(this, 60), 1f));
-        column.addView(actions);
-
-        Runnable submit = () -> {
+        final Runnable[] submitHolder = new Runnable[1];
+        submitHolder[0] = () -> {
             String value = address.getText().toString();
             dialog.dismiss();
             navigate(value);
         };
-        go.setOnClickListener(v -> submit.run());
+
+        TvKeyboard.Result keyboard =
+                TvKeyboard.create(this, address, () -> submitHolder[0].run());
+        column.addView(keyboard.root, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        Button go = TvUi.button(this, "Go");
+        Button cancel = TvUi.button(this, "Cancel");
+        go.setOnClickListener(v -> submitHolder[0].run());
         cancel.setOnClickListener(v -> dialog.dismiss());
+        actions.addView(go, new LinearLayout.LayoutParams(0, TvUi.dp(this, 56), 1f));
+        actions.addView(cancel, new LinearLayout.LayoutParams(0, TvUi.dp(this, 56), 1f));
+        column.addView(actions);
+
         address.setOnEditorActionListener((v, actionId, event) -> {
             if (actionId == EditorInfo.IME_ACTION_GO
                     || (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER)) {
-                submit.run();
+                submitHolder[0].run();
                 return true;
             }
             return false;
@@ -464,15 +475,10 @@ public final class MainActivity extends Activity
             Window window = dialog.getWindow();
             if (window != null) {
                 window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-                window.setLayout(TvUi.dp(this, 760), ViewGroup.LayoutParams.WRAP_CONTENT);
-                window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
+                window.setLayout(TvUi.dp(this, 820), ViewGroup.LayoutParams.WRAP_CONTENT);
             }
             address.requestFocus();
             address.selectAll();
-            address.post(() -> {
-                InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-                if (imm != null) imm.showSoftInput(address, InputMethodManager.SHOW_IMPLICIT);
-            });
         });
         dialog.show();
     }
