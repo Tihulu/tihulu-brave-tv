@@ -1,0 +1,10 @@
+<resources>
+    <style name="Theme.TihuluYouTubeTV" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:colorAccent">#FF0033</item>
+        <item name="android:navigationBarColor">#0F0F0F</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

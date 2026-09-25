@@ -1,0 +1,56 @@
+name: Tihulu YouTube TV APKs
+
+on:
+  push:
+    branches:
+      - main
+      - feature/tihulu-youtube-tv
+    paths:
+      - "youtube-tv/**"
+      - ".github/workflows/tihulu-youtube-tv.yml"
+  pull_request:
+    paths:
+      - "youtube-tv/**"
+      - ".github/workflows/tihulu-youtube-tv.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "8.13"
+          cache-provider: basic
+
+      - name: Build installable ARM APKs
+        working-directory: youtube-tv
+        run: gradle :app:assembleArm32Debug :app:assembleArm64Debug --stacktrace
+
+      - name: Stage APK names
+        run: |
+          mkdir -p artifacts
+          cp youtube-tv/app/build/outputs/apk/arm32/debug/app-arm32-debug.apk artifacts/Tihulu-YouTube-TV-arm32.apk
+          cp youtube-tv/app/build/outputs/apk/arm64/debug/app-arm64-debug.apk artifacts/Tihulu-YouTube-TV-arm64.apk
+
+      - name: Upload ARM32 APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: Tihulu-YouTube-TV-arm32
+          path: artifacts/Tihulu-YouTube-TV-arm32.apk
+
+      - name: Upload ARM64 APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: Tihulu-YouTube-TV-arm64
+          path: artifacts/Tihulu-YouTube-TV-arm64.apk
