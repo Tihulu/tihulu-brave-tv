@@ -10,6 +10,10 @@ on:
         type: choice
         options: [arm, arm64, both]
         default: both
+      publish_preview:
+        description: Publish a development prerelease with direct APK downloads
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -71,3 +75,39 @@ jobs:
             cat out/apk/*.sha256
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  publish-preview:
+    if: ${{ inputs.publish_preview }}
+    needs: native
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: tihulu-tv-native-${{ inputs.architecture }}-${{ github.sha }}
+          path: apk
+      - name: Publish development APKs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOURCE_COMMIT: ${{ github.sha }}
+          PREVIEW_TAG: tv-preview-${{ github.run_number }}-${{ github.run_attempt }}
+        shell: bash
+        run: |
+          cat > release-notes.md <<'NOTES'
+          Native Tihulu TV Browser development build. Choose armeabi-v7a for ARM32
+          Android, or arm64-v8a when the TV exposes that ABI.
+
+          These APKs passed source checks, the native compile and APK signature
+          verification. They have not been validated on physical TV hardware.
+          This is a development prerelease using upstream's development signing
+          configuration. A production signing key and device testing are required
+          for a stable release. Existing installs with another signing key cannot
+          be updated in place. This preview is excluded from the stable updater.
+
+          Each APK includes a SHA-256 checksum and a JSON provenance file.
+          NOTES
+          gh release create "$PREVIEW_TAG" apk/* \
+            --repo "$GH_REPO" --target "$SOURCE_COMMIT" --prerelease \
+            --title "Tihulu TV Browser development preview" --notes-file release-notes.md

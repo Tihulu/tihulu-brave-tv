@@ -32,7 +32,8 @@ while the workflow is running.
 Once this workflow is on the default branch:
 
 1. Open **Actions → Build native TV APK → Run workflow**.
-2. Select the branch and `arm`, `arm64` or `both`.
+2. Select the branch and `arm`, `arm64` or `both`. Optionally enable
+   **Publish a development prerelease** for public, direct APK download links.
 3. Wait for the full native build to finish. First builds can take hours.
 4. Download `tihulu-tv-native-…` from the completed run's **Artifacts** section.
 5. Extract the ZIP. Use `tihulu-tv-armeabi-v7a.apk` for ARM32 Android, or
@@ -50,9 +51,11 @@ pinned Brave version and ABI. Verify the checksum after extraction:
 sha256sum -c tihulu-tv-armeabi-v7a.apk.sha256
 ```
 
-Artifacts expire after 30 days. These are development builds using upstream's
-development signing configuration, not a production release channel. APKs are
-not automatically added to Releases or offered by the in-app stable updater.
+Artifacts expire after 30 days. Selecting **publish_preview** also saves the APKs,
+checksums and provenance to a GitHub prerelease after the full build succeeds.
+Those Releases downloads are public and do not expire with the Actions artifact.
+These are development builds using upstream's development signing configuration,
+not a production release channel; the in-app stable updater excludes prereleases.
 Production releases need a maintainer-owned persistent signing key and device
 acceptance testing. If an existing installation has a different signature,
 `adb install -r` will refuse the update; preserve/export needed data before making

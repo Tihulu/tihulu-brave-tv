@@ -22,7 +22,14 @@ final class TvAddressInput {
         String lower = input.toLowerCase(Locale.ROOT);
         if (lower.startsWith("https://") || lower.startsWith("http://")) return input;
         if (SCHEME.matcher(input).matches() && !LOCAL_PORT.matcher(input).matches()) {
-            throw new IllegalArgumentException("Use an http:// or https:// web address.");
+            if (input.contains("://") || lower.startsWith("javascript:")
+                    || lower.startsWith("data:") || lower.startsWith("file:")
+                    || lower.startsWith("intent:") || lower.startsWith("content:")) {
+                throw new IllegalArgumentException("Use an http:// or https:// web address.");
+            }
+            // Search operators such as site:example.com and ordinary colon-separated
+            // phrases are queries, not external intents or web hostnames.
+            return "";
         }
         for (int i = 0; i < input.length(); i++) {
             if (Character.isWhitespace(input.charAt(i))) return "";

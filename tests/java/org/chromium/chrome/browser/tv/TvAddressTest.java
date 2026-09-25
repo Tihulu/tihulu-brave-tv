@@ -31,6 +31,8 @@ public final class TvAddressTest {
         assert TvAddressInput.urlCandidate("[::1]:8443/").equals("https://[::1]:8443/");
         assert TvAddressInput.urlCandidate("hello world").isEmpty();
         assert TvAddressInput.urlCandidate("weather").isEmpty();
+        assert TvAddressInput.urlCandidate("site:example.com").isEmpty();
+        assert TvAddressInput.urlCandidate("topic: browser controls").isEmpty();
         assert TvAddressInput.urlCandidate("a@b.com").isEmpty();
         for (String value : new String[] {null, " ", "javascript:alert(1)", "intent://scan", "file:///tmp/a", "data:text/html,x"}) {
             rejected(value);
