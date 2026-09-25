@@ -14,7 +14,9 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
 import android.text.InputType;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
@@ -451,6 +453,40 @@ public final class MainActivity extends Activity
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
 
+        dialog.setOnKeyListener((d, keyCode, event) -> {
+            if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
+
+            View focused = dialog.getCurrentFocus();
+
+            if (keyCode == KeyEvent.KEYCODE_BACK) {
+                dialog.dismiss();
+                return true;
+            }
+
+            if (focused == address && keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                address.clearFocus();
+                keyboard.firstKey.requestFocus();
+                return true;
+            }
+
+            if (keyboard.owns(focused)
+                    && (keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+                            || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+                            || keyCode == KeyEvent.KEYCODE_DPAD_UP
+                            || keyCode == KeyEvent.KEYCODE_DPAD_DOWN)) {
+                return keyboard.handleDirectional(focused, keyCode);
+            }
+
+            if (keyboard.owns(focused)
+                    && (keyCode == KeyEvent.KEYCODE_DPAD_CENTER
+                            || keyCode == KeyEvent.KEYCODE_ENTER)) {
+                focused.performClick();
+                return true;
+            }
+
+            return false;
+        });
+
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
         Button go = TvUi.button(this, "Go");
@@ -476,9 +512,20 @@ public final class MainActivity extends Activity
             if (window != null) {
                 window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
                 window.setLayout(TvUi.dp(this, 820), ViewGroup.LayoutParams.WRAP_CONTENT);
+                window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
             }
+
             address.requestFocus();
             address.selectAll();
+
+            // Some TV ROMs keep their IME window alive even after showSoftInputOnFocus(false).
+            // Force-hide it so D-pad events remain inside this dialog and our deterministic
+            // keyboard dispatcher always receives them.
+            address.post(() -> {
+                InputMethodManager imm =
+                        (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (imm != null) imm.hideSoftInputFromWindow(address.getWindowToken(), 0);
+            });
         });
         dialog.show();
     }
