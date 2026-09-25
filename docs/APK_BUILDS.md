@@ -11,9 +11,13 @@ Register a GitHub Actions self-hosted runner for this repository from
 **Settings → Actions → Runners → New self-hosted runner**. Use Linux x64 (Ubuntu
 22.04/24.04 is the intended host) and add the custom label **tihulu-android**.
 Use a dedicated build account/machine with at least 16 GB RAM, preferably 32 GB,
-and an SSD with at least 200 GiB free before the initial checkout; 350–400 GiB
-available is preferable for both architectures. The runner account needs sudo
-for the existing dependency installers. A warm checkout still needs 60 GiB free.
+and an SSD with substantial free space. [Chromium's official Android build guide](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/android_build_instructions.md),
+also linked by Brave's Android guide, lists **at least 100 GB free**. This project's
+200 GiB fresh-checkout and 60 GiB warm-checkout figures are conservative planning
+estimates, not measured minimums or guarantees. The script now warns below those
+estimates instead of refusing to build. Actual usage depends on checkout history,
+debug symbols, cached dependencies and how many architectures/configurations are
+retained. The runner account needs sudo for the existing dependency installers.
 
 The workflow only runs on manual dispatch, never on pull requests. Keep the runner
 restricted to trusted maintainers. Do not use an ordinary small GitHub-hosted
@@ -73,6 +77,6 @@ cd tihulu-brave-tv
 
 Outputs go to `out/apk/`. The script refuses to package an old APK after a failed
 or incomplete build, checks the embedded native ABI and APK ZIP integrity, and
-runs the Android SDK's `apksigner verify`. Disk preflight runs before dependency
+runs the Android SDK's `apksigner verify`. Disk warnings appear before dependency
 installation or large downloads. Keep the `.work` checkout to resume interrupted
 builds.

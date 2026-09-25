@@ -6,16 +6,18 @@ WORKSPACE="${BRAVE_TV_WORKSPACE:-$ROOT/.work/brave-browser}"
 case "$ARCH" in arm|arm64) ;; *) echo 'Expected arm or arm64' >&2; exit 2 ;; esac
 
 mkdir -p "$WORKSPACE"
-# Avoid a many-hour download failing near the end because the runner is too small.
+# These are planning estimates, not measured minimums for this Brave build.
+# Upstream Android guidance lists 100 GB; checkout history, symbols, ABI and
+# existing outputs change actual use. Warn without rejecting smaller builders.
 FREE_KB="$(df -Pk "$WORKSPACE" | awk 'NR==2 {print $4}')"
-REQUIRED_GIB=200
+RECOMMENDED_GIB=200
 if [[ -d "$WORKSPACE/src/.git" && -d "$WORKSPACE/src/brave/.git" ]]; then
-  REQUIRED_GIB=60
+  RECOMMENDED_GIB=60
 fi
-if (( FREE_KB < REQUIRED_GIB * 1024 * 1024 )); then
-  echo "Native Brave build needs at least $REQUIRED_GIB GiB free at $WORKSPACE (found $((FREE_KB / 1024 / 1024)) GiB)." >&2
-  echo 'Use a Linux x64 build runner with a large SSD; ordinary validation does not produce an APK.' >&2
-  exit 2
+if (( FREE_KB < RECOMMENDED_GIB * 1024 * 1024 )); then
+  echo "Disk warning: $((FREE_KB / 1024 / 1024)) GiB free at $WORKSPACE; this project's conservative planning estimate is $RECOMMENDED_GIB GiB." >&2
+  echo 'This estimate is not a hard minimum. Chromium Android documents 100 GB for a fresh build; actual Brave use has not been measured here.' >&2
+  echo 'Continuing; monitor free disk space during checkout and compilation.' >&2
 fi
 "$ROOT/scripts/install-host-deps.sh"
 # shellcheck disable=SC1091

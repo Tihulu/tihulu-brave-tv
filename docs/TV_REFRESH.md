@@ -37,8 +37,11 @@ to the browser in cursor mode.
 a labelled Linux runner. They verify the ABI, freshness, archive and Android APK
 signature before artifact upload; see [APK builds](APK_BUILDS.md). This is build
 infrastructure, not evidence that an APK has already been built. The editing
-environment's build attempt stops at the disk preflight (29 GiB free, 200 GiB
-required for a fresh checkout). Runner inventory is unavailable through the
+environment's initial build attempt stopped at an overly conservative disk
+preflight (29 GiB free against a 200 GiB estimate), before downloading or compiling
+Brave. That estimate is now a warning rather than a hard requirement; upstream
+Android documentation lists 100 GB free. This project's actual full build disk
+use remains unmeasured. Runner inventory is unavailable through the
 current GitHub connector; no suitable remote machine has been established.
 
 ## Automated checks
