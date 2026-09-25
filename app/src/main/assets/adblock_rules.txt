@@ -54,3 +54,10 @@ contains:/pagead/
 contains:ad.doubleclick.
 contains:googleads.
 contains:googlesyndication.
+
+# YouTube ad/tracking endpoints; do not block googlevideo.com media wholesale.
+contains:/api/stats/ads
+contains:/ptracking
+contains:/pagead/
+contains:/get_midroll_info
+contains:youtube.com/pagead/
