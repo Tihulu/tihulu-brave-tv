@@ -16,6 +16,7 @@ final class BlockingWebViewClient extends WebViewClient {
     interface Listener {
         void onBlockedRequest(int total);
         void onPageStarted(String url);
+        void onPageCommitVisible(String url);
         void onPageFinished(String url);
     }
 
@@ -74,6 +75,7 @@ final class BlockingWebViewClient extends WebViewClient {
     public void onPageCommitVisible(WebView view, String url) {
         if (url != null) currentPageUrl = url;
         adBlockEngine.injectCosmeticFiltering(view, currentPageUrl);
+        listener.onPageCommitVisible(url);
         super.onPageCommitVisible(view, url);
     }
 
