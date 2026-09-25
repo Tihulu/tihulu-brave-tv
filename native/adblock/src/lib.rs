@@ -96,7 +96,7 @@ pub extern "system" fn Java_com_tihulu_tvlite_BraveAdblock_nativeShouldBlock(
     };
 
     let result = engine.check_network_request(&request);
-    if result.matched {
+    if result.should_block() {
         JNI_TRUE
     } else {
         JNI_FALSE
