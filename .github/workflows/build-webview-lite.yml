@@ -1,0 +1,90 @@
+name: Build WebView Lite APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/webview-lite
+    paths:
+      - "app/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - ".github/workflows/build-webview-lite.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out experiment
+        uses: actions/checkout@v7
+
+      - name: Set up Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:assembleDebug
+
+      - name: Collect APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk dist/Tihulu-TV-Browser-Lite-debug.apk
+          sha256sum dist/Tihulu-TV-Browser-Lite-debug.apk > dist/Tihulu-TV-Browser-Lite-debug.apk.sha256
+          echo "APK size:"
+          ls -lh dist/Tihulu-TV-Browser-Lite-debug.apk
+
+          if unzip -l dist/Tihulu-TV-Browser-Lite-debug.apk | grep -Eq 'lib/[^/]+/[^/]+\.so$'; then
+            echo "::warning::Native libraries were found in the Lite APK; inspect them before claiming architecture independence."
+            unzip -l dist/Tihulu-TV-Browser-Lite-debug.apk | grep -E 'lib/[^/]+/[^/]+\.so$' || true
+          else
+            echo "No bundled native .so libraries: browser engine is supplied by Android System WebView."
+          fi
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: Tihulu-TV-Browser-Lite-${{ github.run_number }}
+          path: |
+            dist/Tihulu-TV-Browser-Lite-debug.apk
+            dist/Tihulu-TV-Browser-Lite-debug.apk.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+      - name: Summary
+        shell: bash
+        run: |
+          {
+            echo "## Tihulu TV Browser Lite"
+            echo
+            echo "- Engine: Android System WebView"
+            echo "- APK: `Tihulu-TV-Browser-Lite-debug.apk`"
+            echo "- Artifact: `Tihulu-TV-Browser-Lite-${GITHUB_RUN_NUMBER}`"
+          } >> "$GITHUB_STEP_SUMMARY"
