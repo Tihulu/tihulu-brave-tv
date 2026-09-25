@@ -3,7 +3,6 @@ package com.tihulu.tvlite;
 import android.app.Activity;
 import android.app.Dialog;
 import android.content.Context;
-import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Rect;
 import android.graphics.drawable.ColorDrawable;
@@ -32,8 +31,6 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import org.json.JSONObject;
-
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.util.ArrayList;
@@ -48,8 +45,6 @@ public final class MainActivity extends Activity
     private static final float CURSOR_STEP_DP = 24f;
     private static final float CURSOR_REPEAT_ACCELERATION = 0.16f;
     private static final int CURSOR_MAX_ACCEL_REPEAT = 6;
-    private static final int REQUEST_TEXT_INPUT = 1701;
-    private static final String ADDRESS_INPUT_TOKEN = "__tihulu_address__";
 
     private final ArrayList<TabState> tabs = new ArrayList<>();
 
@@ -65,7 +60,6 @@ public final class MainActivity extends Activity
     private boolean upLongPressConsumed;
     private int currentTabIndex;
     private volatile boolean webTextEditing;
-    private String pendingTextInputToken;
 
     private View customView;
     private WebChromeClient.CustomViewCallback customViewCallback;
@@ -281,127 +275,19 @@ public final class MainActivity extends Activity
 
     private final class WebInputBridge {
         @JavascriptInterface
-        public void openNativeEditor(
-                String token, String value, String hint, String inputType) {
-            runOnUiThread(
-                    () -> launchTextInputActivity(token, value, hint, inputType));
+        public void setTextEditing(boolean editing) {
+            webTextEditing = editing;
+            runOnUiThread(MainActivity.this::updateStatus);
         }
-    }
-
-    private void launchTextInputActivity(
-            String token, String value, String hint, String inputType) {
-        if (token == null || token.isEmpty() || isFinishing()) return;
-        if (pendingTextInputToken != null) return;
-
-        pendingTextInputToken = token;
-        webTextEditing = true;
-        updateStatus();
-
-        Intent intent = new Intent(this, TextInputActivity.class);
-        intent.putExtra(TextInputActivity.EXTRA_TOKEN, token);
-        intent.putExtra(TextInputActivity.EXTRA_VALUE, value == null ? "" : value);
-        intent.putExtra(TextInputActivity.EXTRA_HINT, hint == null ? "" : hint);
-        intent.putExtra(TextInputActivity.EXTRA_INPUT_TYPE, inputType == null ? "text" : inputType);
-        startActivityForResult(intent, REQUEST_TEXT_INPUT);
-    }
-
-    private void syncTextInputResultToWeb(String token, String value, boolean submit) {
-        if (webView == null || token == null || token.isEmpty()) return;
-
-        String tokenJson = JSONObject.quote(token);
-        String valueJson = JSONObject.quote(value == null ? "" : value);
-
-        String script =
-                "(function(){"
-                + "const token=" + tokenJson + ";"
-                + "const value=" + valueJson + ";"
-                + "const submit=" + (submit ? "true" : "false") + ";"
-                + "const nodes=document.querySelectorAll('[data-tihulu-editor-id]');"
-                + "let e=null;for(const n of nodes){"
-                + "if(n.dataset&&n.dataset.tihuluEditorId===token){e=n;break;}}"
-                + "if(!e){window.__tihuluNativeEditorBusy=false;return;}"
-                + "try{"
-                + "const tag=(e.tagName||'').toUpperCase();"
-                + "if(tag==='INPUT'){"
-                + "const d=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');"
-                + "if(d&&d.set)d.set.call(e,value);else e.value=value;"
-                + "}else if(tag==='TEXTAREA'){"
-                + "const d=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value');"
-                + "if(d&&d.set)d.set.call(e,value);else e.value=value;"
-                + "}else{e.textContent=value;}"
-                + "try{e.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText'}));}"
-                + "catch(x){e.dispatchEvent(new Event('input',{bubbles:true}));}"
-                + "if(submit){"
-                + "try{e.focus({preventScroll:true});}catch(x){try{e.focus();}catch(y){}}"
-                + "for(const t of ['keydown','keypress','keyup']){"
-                + "try{e.dispatchEvent(new KeyboardEvent(t,{"
-                + "key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true,cancelable:true}));}"
-                + "catch(x){}}"
-                + "}"
-                + "}catch(x){}"
-                + "window.__tihuluNativeEditorBusy=false;"
-                + "try{e.blur();}catch(x){}"
-                + "})();";
-
-        webView.post(
-                () -> {
-                    webView.evaluateJavascript(script, null);
-                    webView.requestFocus();
-                });
-    }
-
-    @Override
-    protected void onActivityResult(
-            int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQUEST_TEXT_INPUT) return;
-
-        String token = pendingTextInputToken;
-        pendingTextInputToken = null;
-        webTextEditing = false;
-        updateStatus();
-
-        if (resultCode != RESULT_OK || data == null || token == null) {
-            resetWebEditorBusyFlag();
-            if (webView != null) webView.requestFocus();
-            return;
-        }
-
-        String returnedToken = data.getStringExtra(TextInputActivity.EXTRA_TOKEN);
-        String value = data.getStringExtra(TextInputActivity.EXTRA_VALUE);
-        boolean submit = data.getBooleanExtra(TextInputActivity.EXTRA_SUBMIT, false);
-
-        if (returnedToken != null && !returnedToken.isEmpty()) {
-            token = returnedToken;
-        }
-
-        if (ADDRESS_INPUT_TOKEN.equals(token)) {
-            if (submit && value != null && !value.trim().isEmpty()) {
-                navigate(value);
-            } else if (webView != null) {
-                webView.requestFocus();
-            }
-            return;
-        }
-
-        syncTextInputResultToWeb(token, value, submit);
-    }
-
-    private void resetWebEditorBusyFlag() {
-        if (webView == null) return;
-        webView.post(
-                () ->
-                        webView.evaluateJavascript(
-                                "window.__tihuluNativeEditorBusy=false;", null));
     }
 
     private void injectWebTextInputTracking() {
         String script =
                 "(function(){"
-                + "if(window.__tihuluNativeInputInstalled)return;"
-                + "window.__tihuluNativeInputInstalled=true;"
-                + "window.__tihuluNativeEditorBusy=false;"
-                + "let seq=0;"
+                + "if(window.__tihuluInputTrackingInstalled){"
+                + "if(window.__tihuluReportTextEditing)window.__tihuluReportTextEditing();"
+                + "return;}"
+                + "window.__tihuluInputTrackingInstalled=true;"
                 + "const editable=(n)=>{"
                 + "if(!n||n.nodeType!==1)return false;"
                 + "const tag=(n.tagName||'').toUpperCase();"
@@ -412,31 +298,19 @@ public final class MainActivity extends Activity
                 + "const role=(n.getAttribute&&n.getAttribute('role')||'').toLowerCase();"
                 + "return role==='textbox'||role==='searchbox'||role==='combobox';"
                 + "};"
-                + "const pick=(ev)=>{"
+                + "const report=(ev)=>{"
+                + "let editing=false;"
                 + "try{"
                 + "const path=ev&&ev.composedPath?ev.composedPath():[];"
-                + "for(const n of path){if(editable(n))return n;}"
-                + "if(editable(document.activeElement))return document.activeElement;"
-                + "}catch(e){}return null;"
+                + "editing=path.some(editable)||editable(document.activeElement);"
+                + "}catch(e){}"
+                + "try{window.__TihuluInput.setTextEditing(!!editing);}catch(e){}"
                 + "};"
-                + "const open=(ev)=>{"
-                + "if(window.__tihuluNativeEditorBusy)return;"
-                + "const e=pick(ev);if(!e)return;"
-                + "window.__tihuluNativeEditorBusy=true;"
-                + "let id=e.dataset&&e.dataset.tihuluEditorId;"
-                + "if(!id){id='tihulu_'+Date.now().toString(36)+'_'+(++seq);"
-                + "try{e.dataset.tihuluEditorId=id;}catch(x){"
-                + "e.setAttribute('data-tihulu-editor-id',id);}}"
-                + "const value=('value' in e)?String(e.value||''):String(e.textContent||'');"
-                + "const hint=String(e.getAttribute('placeholder')||e.getAttribute('aria-label')||'');"
-                + "const type=String(e.getAttribute('type')||e.getAttribute('inputmode')||'text');"
-                + "setTimeout(()=>{"
-                + "try{e.blur();}catch(x){}"
-                + "try{window.__TihuluInput.openNativeEditor(id,value,hint,type);}"
-                + "catch(x){window.__tihuluNativeEditorBusy=false;}"
-                + "},0);"
-                + "};"
-                + "document.addEventListener('focusin',open,true);"
+                + "window.__tihuluReportTextEditing=()=>report(null);"
+                + "document.addEventListener('focusin',report,true);"
+                + "document.addEventListener('focusout',()=>setTimeout(()=>report(null),0),true);"
+                + "document.addEventListener('pointerdown',()=>setTimeout(()=>report(null),0),true);"
+                + "report(null);"
                 + "})();";
         webView.evaluateJavascript(script, null);
     }
@@ -603,12 +477,7 @@ public final class MainActivity extends Activity
 
     @Override
     public void openAddress() {
-        String current = webView == null || webView.getUrl() == null ? "" : webView.getUrl();
-        launchTextInputActivity(
-                ADDRESS_INPUT_TOKEN,
-                current,
-                "Search or enter address",
-                "url");
+        showAddressDialog();
     }
 
     private void showAddressDialog() {
