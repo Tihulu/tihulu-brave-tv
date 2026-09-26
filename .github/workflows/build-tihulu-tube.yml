@@ -3,7 +3,7 @@ name: Build Tihulu Tube
 on:
   push:
     branches: [codex/tihulu-tube]
-    paths: [youtube-tv/**, .github/workflows/build-tihulu-tube.yml]
+    paths: [youtube-tv/overlays/**, youtube-tv/patches/**, youtube-tv/upstream.json, youtube-tv/prepare.py, youtube-tv/verify_apks.py, youtube-tv/tests/MemoryBudgetTest.java, .github/workflows/build-tihulu-tube.yml]
   workflow_dispatch:
 
 permissions:

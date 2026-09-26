@@ -151,7 +151,7 @@ index f2af890..b972e29 100644
      android:searchSuggestThreshold="0" />
 \ No newline at end of file
 diff --git a/smarttubetv/build.gradle b/smarttubetv/build.gradle
-index 93ca24c..8f4ec5f 100644
+index 93ca24c..748209d 100644
 --- a/smarttubetv/build.gradle
 +++ b/smarttubetv/build.gradle
 @@ -57,8 +57,8 @@ android {
@@ -165,7 +165,17 @@ index 93ca24c..8f4ec5f 100644
          testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
          buildConfigField "long", "TIMESTAMP", System.currentTimeMillis() + "L"
  
-@@ -84,7 +84,7 @@ android {
+@@ -70,9 +70,6 @@ android {
+         multiDexKeepProguard file("multidex-keep.pro")
+ 
+         // The content of Universal apk
+-        ndk {
+-            abiFilters 'armeabi-v7a', 'arm64-v8a'
+-        }
+     }
+ 
+     // https://stackoverflow.com/questions/37382057/android-apk-how-to-exclude-a-so-file-from-a-3rd-party-dependency-using-gradle
+@@ -84,7 +81,7 @@ android {
              // Note, Android could soon start warning users when they run 32-bit apps
              //include 'x86', 'x86_64', 'armeabi-v7a', 'arm64-v8a' //select ABIs to build APKs for
              include 'armeabi-v7a', 'arm64-v8a', 'x86' // v7a main build, x86 for WSL, v8a for Pixel Tablet (no 32 bit support)
@@ -174,7 +184,7 @@ index 93ca24c..8f4ec5f 100644
          }
      }
  
-@@ -123,8 +123,8 @@ android {
+@@ -123,8 +120,8 @@ android {
      // https://stackoverflow.com/questions/18332474/how-to-set-versionname-in-apk-filename-using-gradle
      applicationVariants.all { variant ->
          variant.outputs.all { output ->
@@ -185,7 +195,7 @@ index 93ca24c..8f4ec5f 100644
              def buildType = variant.buildType.name.take(1)
              def version = variant.versionName
              def arch = output.getFilter(com.android.build.OutputFile.ABI)
-@@ -168,8 +168,8 @@ android {
+@@ -168,14 +165,11 @@ android {
              targetSdkVersion project.properties.compileSdkVersion
          }
          stfdroid {
@@ -196,6 +206,12 @@ index 93ca24c..8f4ec5f 100644
              targetSdkVersion project.properties.compileSdkVersion
  
              // The content of Universal apk
+-            ndk {
+-                abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86'
+-            }
+         }
+     }
+ }
 diff --git a/smarttubetv/src/main/AndroidManifest.xml b/smarttubetv/src/main/AndroidManifest.xml
 index e40af8c..aefdd74 100644
 --- a/smarttubetv/src/main/AndroidManifest.xml
