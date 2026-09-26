@@ -1,0 +1,5 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="280dp" android:layout_height="240dp" android:layout_marginEnd="18dp" android:orientation="vertical" android:padding="6dp" android:background="@drawable/video_card" android:focusable="true" android:clickable="true">
+<ImageView android:id="@+id/thumbnail" android:layout_width="match_parent" android:layout_height="158dp" android:scaleType="centerCrop" android:contentDescription="@null"/>
+<TextView android:id="@+id/videoTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:maxLines="2" android:ellipsize="end" android:textColor="#fff" android:textSize="16sp" android:textStyle="bold" android:layout_marginTop="8dp"/>
+<TextView android:id="@+id/videoSubtitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:maxLines="1" android:ellipsize="end" android:textColor="#A8A8AE" android:textSize="13sp" android:layout_marginTop="3dp"/>
+</LinearLayout>
