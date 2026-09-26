@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/yuliskov/SmartTube.git",
+  "commit": "9336539b3db340c7bcf55f95afad44d1d1abb7e4",
+  "version": "32.56",
+  "submodules": {
+    "MediaServiceCore": "da8102d4e052447edaf48d88d86a00a5c21187fb",
+    "SharedModules": "13f5687dd6757b02fbcdf14c5403d0339e377db5"
+  },
+  "app_version": "0.1.0"
+}

@@ -1,0 +1,496 @@
+diff --git a/common/src/main/java/com/liskovsoft/smartyoutubetv2/common/app/presenters/dialogs/AppUpdatePresenter.java b/common/src/main/java/com/liskovsoft/smartyoutubetv2/common/app/presenters/dialogs/AppUpdatePresenter.java
+index 7cf23d1..d19fd42 100644
+--- a/common/src/main/java/com/liskovsoft/smartyoutubetv2/common/app/presenters/dialogs/AppUpdatePresenter.java
++++ b/common/src/main/java/com/liskovsoft/smartyoutubetv2/common/app/presenters/dialogs/AppUpdatePresenter.java
+@@ -49,6 +49,10 @@ public class AppUpdatePresenter extends BasePresenter<Void> implements AppUpdate
+     }
+ 
+     public void start(boolean forceCheck) {
++        if ("com.tihulu.tube".equals(getContext().getPackageName())) {
++            if (forceCheck) MessageHelpers.showMessage(getContext(), "Tihulu Tube preview: install updates from your project build.");
++            return;
++        }
+         mIsForceCheck = forceCheck;
+ 
+         if (forceCheck) {
+diff --git a/common/src/main/java/com/liskovsoft/smartyoutubetv2/common/exoplayer/other/ExoPlayerInitializer.java b/common/src/main/java/com/liskovsoft/smartyoutubetv2/common/exoplayer/other/ExoPlayerInitializer.java
+index 0111d8c..418cb36 100644
+--- a/common/src/main/java/com/liskovsoft/smartyoutubetv2/common/exoplayer/other/ExoPlayerInitializer.java
++++ b/common/src/main/java/com/liskovsoft/smartyoutubetv2/common/exoplayer/other/ExoPlayerInitializer.java
+@@ -29,6 +29,7 @@ import java.util.UUID;
+ 
+ public class ExoPlayerInitializer {
+     private final int mMaxBufferBytes;
++    private final boolean mLiteProfile;
+     private final PlayerData mPlayerData;
+     private final PlayerTweaksData mPlayerTweaksData;
+     private VolumeBooster mVolumeBooster;
+@@ -45,7 +46,10 @@ public class ExoPlayerInitializer {
+         // If ram is too big, bigger then max int value DeviceRam will return a negative number...
+         // use 196MB as that can only happens if device has more than 17GB of RAM, so 196 is enough and safe
+         // https://github.com/yuliskov/SmartYouTubeTV/issues/532
+-        mMaxBufferBytes = deviceRam <= 0 ? 196_000_000 : (int)(deviceRam / 18);
++        com.liskovsoft.smartyoutubetv2.common.utils.TvMemoryBudget budget =
++                com.liskovsoft.smartyoutubetv2.common.utils.TvDeviceProfile.get(context);
++        mMaxBufferBytes = budget.videoBytes;
++        mLiteProfile = budget.lite;
+     }
+ 
+     public SimpleExoPlayer createPlayer(Context context, DefaultRenderersFactory renderersFactory, DefaultTrackSelector trackSelector) {
+@@ -139,6 +143,14 @@ public class ExoPlayerInitializer {
+                 break;
+         }
+ 
++        // Size takes priority so high bitrate streams cannot create unlimited buffers.
++        baseBuilder.setTargetBufferBytes(mMaxBufferBytes)
++                .setPrioritizeTimeOverSizeThresholds(false)
++                .setBackBuffer(0, false);
++        if (mLiteProfile) {
++            minBufferMs = Math.min(minBufferMs, 10_000);
++            maxBufferMs = Math.min(maxBufferMs, 20_000);
++        }
+         baseBuilder
+                 .setBufferDurationsMs(minBufferMs, maxBufferMs, bufferForPlaybackMs, bufferForPlaybackAfterRebufferMs);
+ 
+diff --git a/common/src/main/java/com/liskovsoft/smartyoutubetv2/common/prefs/MainUIData.java b/common/src/main/java/com/liskovsoft/smartyoutubetv2/common/prefs/MainUIData.java
+index 8ad0b52..0e51d45 100644
+--- a/common/src/main/java/com/liskovsoft/smartyoutubetv2/common/prefs/MainUIData.java
++++ b/common/src/main/java/com/liskovsoft/smartyoutubetv2/common/prefs/MainUIData.java
+@@ -154,7 +154,8 @@ public class MainUIData extends DataChangeBase implements ProfileChangeListener
+     }
+ 
+     public boolean isCardTextAutoScrollEnabled() {
+-        return mIsCardTextAutoScrollEnabled;
++        return !com.liskovsoft.smartyoutubetv2.common.utils.TvDeviceProfile.get(mContext).lite
++                && mIsCardTextAutoScrollEnabled;
+     }
+ 
+     public void setCardTextAutoScrollEnabled(boolean enable) {
+@@ -341,7 +342,8 @@ public class MainUIData extends DataChangeBase implements ProfileChangeListener
+     }
+ 
+     public int getCardPreviewType() {
+-        return mCardPreviewType;
++        return com.liskovsoft.smartyoutubetv2.common.utils.TvDeviceProfile.get(mContext).lite
++                ? CARD_PREVIEW_DISABLED : mCardPreviewType;
+     }
+ 
+     public void setCardPreviewType(int type) {
+@@ -444,7 +446,7 @@ public class MainUIData extends DataChangeBase implements ProfileChangeListener
+         mTopButtons = Helpers.parseInt(split, 13, TOP_BUTTON_DEFAULT);
+         // 14
+         mThumbQuality = Helpers.parseInt(split, 15, ClickbaitRemover.THUMB_QUALITY_DEFAULT);
+-        mIsCardMultilineSubtitleEnabled = Helpers.parseBoolean(split, 16, true);
++        mIsCardMultilineSubtitleEnabled = Helpers.parseBoolean(split, 16, false);
+         mMenuItemsOrdered = Helpers.parseLongList(split, 17);
+         mIsChannelsFilterEnabled = Helpers.parseBoolean(split, 18, true);
+         mIsChannelSearchBarEnabled = Helpers.parseBoolean(split, 19, true);
+diff --git a/common/src/main/java/com/liskovsoft/smartyoutubetv2/common/prefs/PlayerData.java b/common/src/main/java/com/liskovsoft/smartyoutubetv2/common/prefs/PlayerData.java
+index b2595c4..ce3f128 100644
+--- a/common/src/main/java/com/liskovsoft/smartyoutubetv2/common/prefs/PlayerData.java
++++ b/common/src/main/java/com/liskovsoft/smartyoutubetv2/common/prefs/PlayerData.java
+@@ -128,7 +128,10 @@ public class PlayerData extends DataChangeBase implements PlayerConstants, Profi
+         }
+     }
+ 
++    private final boolean mLiteProfile;
++
+     private PlayerData(Context context) {
++        mLiteProfile = com.liskovsoft.smartyoutubetv2.common.utils.TvDeviceProfile.get(context).lite;
+         mPrefs = AppPrefs.instance(context);
+         mPrefs.addListener(this);
+         initSubtitleStyles();
+@@ -718,6 +721,7 @@ public class PlayerData extends DataChangeBase implements PlayerConstants, Profi
+     }
+ 
+     public FormatItem getDefaultVideoFormat() {
++        if (mLiteProfile) return FormatItem.VIDEO_FHD_AVC_30;
+         FormatItem formatItem = mDefaultVideoFormats.get(Build.MODEL);
+ 
+         if (formatItem == null) {
+diff --git a/leanbackassistant/src/main/AndroidManifest.xml b/leanbackassistant/src/main/AndroidManifest.xml
+index 1e536ad..e2738e4 100644
+--- a/leanbackassistant/src/main/AndroidManifest.xml
++++ b/leanbackassistant/src/main/AndroidManifest.xml
+@@ -43,7 +43,7 @@
+         </activity>
+ 
+         <provider android:name=".search.VideoContentProvider"
+-                  android:authorities="org.smarttube"
++                  android:authorities="com.tihulu.tube"
+                   android:exported="true"
+                   android:initOrder="1999999999"
+                   tools:ignore="ExportedContentProvider" />
+diff --git a/leanbackassistant/src/main/res/values/strings.xml b/leanbackassistant/src/main/res/values/strings.xml
+index c3b7363..44f243e 100644
+--- a/leanbackassistant/src/main/res/values/strings.xml
++++ b/leanbackassistant/src/main/res/values/strings.xml
+@@ -1,6 +1,6 @@
+ <resources>
+     <string translatable="false" name="app_name">LeanbackAssistant</string>
+-    <string translatable="false" name="search_authority">org.smarttube</string>
++    <string translatable="false" name="search_authority">com.tihulu.tube</string>
+ 
+     <string name="search_hint">Search for Videos</string>
+     <string name="search_label">SmartTube</string>
+diff --git a/leanbackassistant/src/main/res/xml/searchable.xml b/leanbackassistant/src/main/res/xml/searchable.xml
+index f2af890..b972e29 100644
+--- a/leanbackassistant/src/main/res/xml/searchable.xml
++++ b/leanbackassistant/src/main/res/xml/searchable.xml
+@@ -34,9 +34,9 @@
+     android:label="@string/search_label"
+     android:icon="@drawable/lb_ic_in_app_search"
+     android:searchSettingsDescription="@string/settings_description"
+-    android:searchSuggestAuthority="org.smarttube"
++    android:searchSuggestAuthority="com.tihulu.tube"
+     android:searchSuggestIntentAction="android.intent.action.VIEW"
+-    android:searchSuggestIntentData="content://org.smarttube/video"
++    android:searchSuggestIntentData="content://com.tihulu.tube/video"
+     android:queryAfterZeroResults="true"
+     android:searchSuggestPath="search"
+     android:searchSuggestThreshold="0" />
+\ No newline at end of file
+diff --git a/smarttubetv/build.gradle b/smarttubetv/build.gradle
+index 93ca24c..8f4ec5f 100644
+--- a/smarttubetv/build.gradle
++++ b/smarttubetv/build.gradle
+@@ -57,8 +57,8 @@ android {
+         applicationId "app.smarttube"
+         minSdkVersion project.properties.minSdkVersion
+         targetSdkVersion project.properties.targetSdkVersion
+-        versionCode 2446
+-        versionName "32.56"
++        versionCode 10000 + (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
++        versionName "0.1.0-preview"
+         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+         buildConfigField "long", "TIMESTAMP", System.currentTimeMillis() + "L"
+ 
+@@ -84,7 +84,7 @@ android {
+             // Note, Android could soon start warning users when they run 32-bit apps
+             //include 'x86', 'x86_64', 'armeabi-v7a', 'arm64-v8a' //select ABIs to build APKs for
+             include 'armeabi-v7a', 'arm64-v8a', 'x86' // v7a main build, x86 for WSL, v8a for Pixel Tablet (no 32 bit support)
+-            universalApk true //generate an additional APK that contains all the ABIs
++            universalApk false //generate an additional APK that contains all the ABIs
+         }
+     }
+ 
+@@ -123,8 +123,8 @@ android {
+     // https://stackoverflow.com/questions/18332474/how-to-set-versionname-in-apk-filename-using-gradle
+     applicationVariants.all { variant ->
+         variant.outputs.all { output ->
+-            def project = "SmartTube"
+-            def flavor = variant.productFlavors[-1].name.substring(2) // remove st prefix
++            def project = "TihuluTube"
++            def flavor = "preview"
+             def buildType = variant.buildType.name.take(1)
+             def version = variant.versionName
+             def arch = output.getFilter(com.android.build.OutputFile.ABI)
+@@ -168,8 +168,8 @@ android {
+             targetSdkVersion project.properties.compileSdkVersion
+         }
+         stfdroid {
+-            applicationId "app.smarttube.fdroid"
+-            minSdkVersion 21
++            applicationId "com.tihulu.tube"
++            minSdkVersion 23
+             targetSdkVersion project.properties.compileSdkVersion
+ 
+             // The content of Universal apk
+diff --git a/smarttubetv/src/main/AndroidManifest.xml b/smarttubetv/src/main/AndroidManifest.xml
+index e40af8c..aefdd74 100644
+--- a/smarttubetv/src/main/AndroidManifest.xml
++++ b/smarttubetv/src/main/AndroidManifest.xml
+@@ -50,10 +50,10 @@
+         android:allowBackup="true"
+         android:allowAudioPlaybackCapture="true"
+         android:hardwareAccelerated="true"
+-        android:largeHeap="true"
+-        android:banner="@mipmap/app_banner"
+-        android:logo="@mipmap/app_logo"
+-        android:icon="@mipmap/app_icon"
++        android:largeHeap="false"
++        android:banner="@drawable/tihulu_banner"
++        android:logo="@drawable/tihulu_wordmark"
++        android:icon="@drawable/tihulu_icon"
+         android:label="@string/app_name"
+         android:theme="@style/App.Theme.Leanback.Browse"
+         tools:node="merge"
+@@ -118,7 +118,7 @@
+ 
+         <!-- Alt app launcher icon -->
+         <activity-alias android:label="@string/app_name"
+-                        android:icon="@mipmap/app_icon_alt"
++                        android:icon="@drawable/tihulu_icon"
+                         android:name="com.liskovsoft.smartyoutubetv2.tv.ui.main.SplashActivityAlt"
+                         android:exported="true"
+                         android:enabled="false"
+diff --git a/smarttubetv/src/main/java/com/liskovsoft/smartyoutubetv2/tv/presenter/IconHeaderItemPresenter.java b/smarttubetv/src/main/java/com/liskovsoft/smartyoutubetv2/tv/presenter/IconHeaderItemPresenter.java
+index 4de27ee..afb47dd 100644
+--- a/smarttubetv/src/main/java/com/liskovsoft/smartyoutubetv2/tv/presenter/IconHeaderItemPresenter.java
++++ b/smarttubetv/src/main/java/com/liskovsoft/smartyoutubetv2/tv/presenter/IconHeaderItemPresenter.java
+@@ -45,7 +45,7 @@ public class IconHeaderItemPresenter extends RowHeaderPresenter {
+         mDefaultIcon = new ColorDrawable(ContextCompat.getColor(viewGroup.getContext(), R.color.lb_grey));
+ 
+         View view = inflater.inflate(R.layout.icon_header_item, null);
+-        view.setAlpha(mUnselectedAlpha); // Initialize icons to be at half-opacity.
++        view.setAlpha(1f);
+ 
+         return new ViewHolder(view);
+     }
+@@ -94,8 +94,8 @@ public class IconHeaderItemPresenter extends RowHeaderPresenter {
+     // mUnselectAlpha, and also assumes the xml inflation will return a RowHeaderView.
+     @Override
+     protected void onSelectLevelChanged(RowHeaderPresenter.ViewHolder holder) {
+-        holder.view.setAlpha(mUnselectedAlpha + holder.getSelectLevel() *
+-                (1.0f - mUnselectedAlpha));
++        holder.view.setAlpha(1f);
++        holder.view.setActivated(holder.getSelectLevel() > 0.5f);
+     }
+ 
+     private final RequestListener<Drawable> mErrorListener = new RequestListener<Drawable>() {
+diff --git a/smarttubetv/src/main/java/com/liskovsoft/smartyoutubetv2/tv/presenter/VideoCardPresenter.java b/smarttubetv/src/main/java/com/liskovsoft/smartyoutubetv2/tv/presenter/VideoCardPresenter.java
+index 686ad7b..9822867 100644
+--- a/smarttubetv/src/main/java/com/liskovsoft/smartyoutubetv2/tv/presenter/VideoCardPresenter.java
++++ b/smarttubetv/src/main/java/com/liskovsoft/smartyoutubetv2/tv/presenter/VideoCardPresenter.java
+@@ -80,6 +80,7 @@ public class VideoCardPresenter extends LongClickPresenter {
+         cardView.enableTextAutoScroll(isCardTextAutoScrollEnabled);
+         cardView.setTextScrollSpeed(cardTextScrollSpeed);
+         cardView.setFocusable(true);
++        cardView.setForeground(ContextCompat.getDrawable(context, R.drawable.tihulu_card_focus));
+         cardView.setFocusableInTouchMode(true);
+         cardView.enableBadge(isBadgeEnabled());
+         cardView.enableTitle(isTitleEnabled());
+@@ -112,7 +113,7 @@ public class VideoCardPresenter extends LongClickPresenter {
+         }
+         TextView contentText = view.findViewById(R.id.content_text);
+         if (contentText != null) {
+-            contentText.setTextColor(textColor);
++            contentText.setTextColor(selected ? textColor : android.graphics.Color.parseColor("#A8AEBB"));
+         }
+     }
+ 
+@@ -165,6 +166,7 @@ public class VideoCardPresenter extends LongClickPresenter {
+                     // Updated thumbnail url not found
+                     Glide.with(context)
+                         .load(video.cardImageUrl) // always working
++                        .override(mWidth, mHeight)
+                         //.placeholder(mDefaultCardImage)
+                         .apply(ViewUtil.glideOptions())
+                         .listener(mErrorListener)
+diff --git a/smarttubetv/src/main/java/com/liskovsoft/smartyoutubetv2/tv/util/GlideCachingModule.java b/smarttubetv/src/main/java/com/liskovsoft/smartyoutubetv2/tv/util/GlideCachingModule.java
+index d5760a0..38b1c06 100644
+--- a/smarttubetv/src/main/java/com/liskovsoft/smartyoutubetv2/tv/util/GlideCachingModule.java
++++ b/smarttubetv/src/main/java/com/liskovsoft/smartyoutubetv2/tv/util/GlideCachingModule.java
+@@ -21,6 +21,15 @@ public class GlideCachingModule extends AppGlideModule {
+         //    return; // NOTE: StatFs will crash on robolectric.
+ 
+         // Limit cache size
+-        builder.setDiskCache(new InternalCacheDiskCacheFactory(context, CACHE_SIZE));
++        com.liskovsoft.smartyoutubetv2.common.utils.TvMemoryBudget budget =
++                com.liskovsoft.smartyoutubetv2.common.utils.TvDeviceProfile.get(context);
++        builder.setMemoryCache(new com.bumptech.glide.load.engine.cache.LruResourceCache(budget.imageBytes));
++        builder.setBitmapPool(new com.bumptech.glide.load.engine.bitmap_recycle.LruBitmapPool(budget.bitmapPoolBytes));
++        builder.setArrayPool(new com.bumptech.glide.load.engine.bitmap_recycle.LruArrayPool(budget.arrayPoolBytes));
++        builder.setDiskCache(new InternalCacheDiskCacheFactory(context, budget.diskCacheBytes));
++        if (budget.lite) {
++            builder.setDefaultRequestOptions(new com.bumptech.glide.request.RequestOptions()
++                    .format(com.bumptech.glide.load.DecodeFormat.PREFER_RGB_565).dontAnimate());
++        }
+     }
+ }
+diff --git a/smarttubetv/src/main/res/layout/lb_playback_transport_controls_row.xml b/smarttubetv/src/main/res/layout/lb_playback_transport_controls_row.xml
+index ce691f7..6edab17 100644
+--- a/smarttubetv/src/main/res/layout/lb_playback_transport_controls_row.xml
++++ b/smarttubetv/src/main/res/layout/lb_playback_transport_controls_row.xml
+@@ -63,7 +63,7 @@
+                 android:layout_width="wrap_content"
+                 android:layout_height="wrap_content"
+                 android:layout_gravity="center_horizontal"
+-                android:text="Hello World!"
++                android:text=""
+                 style="?attr/playbackControlsTimeStyle" />
+         </LinearLayout>
+     </FrameLayout>
+@@ -72,6 +72,7 @@
+         android:layout_width="match_parent"
+         android:layout_height="match_parent"
+         android:id="@+id/transport_row"
++        android:background="@drawable/tihulu_controls_panel"
+         android:orientation="vertical"
+         android:paddingStart="?attr/browsePaddingStart"
+         android:paddingEnd="?attr/browsePaddingEnd"
+diff --git a/smarttubetv/src/main/res/values/colors.xml b/smarttubetv/src/main/res/values/colors.xml
+index dfc7d18..31eb84e 100644
+--- a/smarttubetv/src/main/res/values/colors.xml
++++ b/smarttubetv/src/main/res/values/colors.xml
+@@ -1,7 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+     <!-- MOD: Focused player button color (default: #66EEEEEE, new: #E8FFFFFF) -->
+-    <color name="lb_control_button_color">#86EEEEEE</color>
++    <color name="lb_control_button_color">#E6FFFFFF</color>
+ 
+     <!-- Common colors -->
+     <color name="default_background_gradient_start">#000000</color>
+@@ -13,28 +13,28 @@
+     <color name="search_opaque_yellow">#ffaa3f</color>
+ 
+     <!-- Card view colors -->
+-    <color name="card_selected_background_white">#FFFFFF</color>
++    <color name="card_selected_background_white">#E9EDFF</color>
+     <color name="card_selected_background_white_grey">#D3D3D3</color>
+     <color name="card_selected_background_yellow">#ffaa3f</color>
+     <color name="card_selected_background_grey">#343434</color>
+     <color name="card_selected_text_black">#000000</color>
+-    <color name="card_selected_text_grey">#343434</color>
++    <color name="card_selected_text_grey">#121521</color>
+     <color name="card_default_background">#0096a6</color>
+     <color name="card_default_background_dark">#004B53</color>
+     <color name="card_default_text">#FFFFFF</color>
+ 
+     <!-- Browse fragment colors -->
+     <color name="shelf_background">#282828</color>
+-    <color name="shelf_background_dark">#131313</color>
+-    <color name="icon_background">#4A4F51</color>
++    <color name="shelf_background_dark">#0C0E14</color>
++    <color name="icon_background">#222838</color>
+     <color name="icon_alt_background">#2A2F51</color>
+     <color name="player_background">#FF000000</color>
+ 
+     <!-- Dark color scheme -->
+-    <color name="scheme_grey_background">#181818</color>
+-    <color name="scheme_grey_background_dark">#181818</color>
+-    <color name="scheme_grey_shelf_background_dark">#000000</color>
+-    <color name="scheme_grey_card_background_dark">#121212</color>
++    <color name="scheme_grey_background">#131720</color>
++    <color name="scheme_grey_background_dark">#10131B</color>
++    <color name="scheme_grey_shelf_background_dark">#0C0E14</color>
++    <color name="scheme_grey_card_background_dark">#171B25</color>
+ 
+     <!-- Red color scheme -->
+     <color name="scheme_red_background">#131313</color>
+@@ -60,8 +60,8 @@
+     <color name="foreground_material_light_mod">@android:color/black</color>
+ 
+     <!-- Default Orb buttons colors: search, accounts, search settings etc -->
+-    <color name="orb_color">@color/grey</color>
+-    <color name="orb_bright_color">@color/grey</color>
++    <color name="orb_color">#222838</color>
++    <color name="orb_bright_color">#4B5680</color>
+     <color name="orb_icon_color">@color/white</color>
+ 
+     <!-- Search page mic button color -->
+diff --git a/smarttubetv/src/main/res/values/dimens.xml b/smarttubetv/src/main/res/values/dimens.xml
+index 3c91586..d5e5d62 100644
+--- a/smarttubetv/src/main/res/values/dimens.xml
++++ b/smarttubetv/src/main/res/values/dimens.xml
+@@ -4,7 +4,7 @@
+     <!-- 320dpi, Amazon Fire TV Stick -->
+ 
+     <dimen name="card_width">200dp</dimen>
+-    <dimen name="card_height">110dp</dimen>
++    <dimen name="card_height">112.5dp</dimen>
+     <!-- text_badge_image_view.xml, default: 12sp -->
+     <dimen name="card_badge_text_size">14sp</dimen>
+ 
+@@ -28,12 +28,12 @@
+     <dimen name="pip_title_max_width">370dp</dimen>
+     <dimen name="pip_title_size">24sp</dimen>
+     <dimen name="pip_title_date_size">12sp</dimen>
+-    <dimen name="browse_global_time_size">30sp</dimen>
++    <dimen name="browse_global_time_size">20sp</dimen>
+ 
+     <!-- Card view default size -->
+     <!--
+     <dimen name="lb_basic_card_title_text_size">14sp</dimen>
+-    <dimen name="lb_basic_card_content_text_size">12sp</dimen>
++    <dimen name="lb_basic_card_content_text_size">13sp</dimen>
+     -->
+ 
+     <!-- Search items left margin (except first one). Original value: 70dp -->
+@@ -70,7 +70,7 @@
+     <dimen name="lb_preference_decor_title_margin_end">24dp</dimen>
+ 
+     <!-- Make in-app logo smaller -->
+-    <dimen name="lb_browse_title_icon_height">50dp</dimen>
++    <dimen name="lb_browse_title_icon_height">40dp</dimen>
+     <dimen name="lb_browse_title_height">50dp</dimen>
+ 
+     <!--
+@@ -81,7 +81,7 @@
+     You can also override ShadowOverlayHelper.Options createShadowOverlayOptions() in
+     ListRowPresenter which gives you some ability to change corner radius and focused and unfocused z.
+     -->
+-    <dimen name="lb_rounded_rect_corner_radius">12dp</dimen>
++    <dimen name="lb_rounded_rect_corner_radius">14dp</dimen>
+ 
+     <!-- MOD: Zoom factor of focused button (SearchOrbView, default: 120%) -->
+     <!--<item name="lb_search_orb_focused_zoom" type="fraction">120%</item>-->
+@@ -95,22 +95,22 @@
+     -->
+     <!--<dimen name="lb_browse_item_horizontal_spacing">15dp</dimen>-->
+     <!--<dimen name="lb_browse_item_vertical_spacing">15dp</dimen>-->
+-    <dimen name="grid_item_horizontal_spacing">15dp</dimen>
+-    <dimen name="grid_item_vertical_spacing">15dp</dimen>
++    <dimen name="grid_item_horizontal_spacing">20dp</dimen>
++    <dimen name="grid_item_vertical_spacing">22dp</dimen>
+     <dimen name="grid_horizontal_margin">25dp</dimen>
+ 
+     <!-- Browse headers spacing. Origin: 21dp -->
+     <!--<dimen name="lb_browse_headers_vertical_spacing">10dp</dimen>-->
+-    <dimen name="browse_headers_vertical_spacing">10dp</dimen>
++    <dimen name="browse_headers_vertical_spacing">8dp</dimen>
+ 
+     <!-- Vine card widget values -->
+     <dimen name="lb_basic_card_main_width">140dp</dimen>
+     <dimen name="lb_basic_card_main_height">188dp</dimen>
+     <dimen name="lb_basic_card_info_height">52dp</dimen>
+-    <dimen name="lb_basic_card_info_padding">6dp</dimen>
++    <dimen name="lb_basic_card_info_padding">10dp</dimen>
+     <dimen name="lb_basic_card_info_text_margin">2dp</dimen>
+     <dimen name="lb_basic_card_title_text_size">16sp</dimen>
+-    <dimen name="lb_basic_card_content_text_size">12sp</dimen>
++    <dimen name="lb_basic_card_content_text_size">13sp</dimen>
+     <dimen name="lb_basic_card_info_badge_size">16dp</dimen>
+ 
+     <!-- Elements below aren't used in the app -->
+diff --git a/smarttubetv/src/main/res/values/styles.xml b/smarttubetv/src/main/res/values/styles.xml
+index 42656c2..b83d489 100644
+--- a/smarttubetv/src/main/res/values/styles.xml
++++ b/smarttubetv/src/main/res/values/styles.xml
+@@ -54,7 +54,7 @@
+         <item name="cardDefaultBackground">@color/card_default_background_dark</item>
+         <item name="cardSelectedBackground">@color/card_selected_background_white</item>
+         <item name="cardProgressStyle">?android:attr/progressBarStyleHorizontal</item>
+-        <item name="appLogo">@mipmap/app_logo</item>
++        <item name="appLogo">@drawable/tihulu_wordmark</item>
+         <item name="android:colorAccent" tools:targetApi="21">@color/fastlane_background</item>
+         <item name="itemsVerticalGridStyle">@style/GridViewStyle</item>
+         <item name="rowHorizontalGridStyle">@style/RowViewStyle</item>
+@@ -121,7 +121,7 @@
+         <item name="cardProgressStyle">@style/ProgressBarHorizontal.Dark</item>
+         <item name="shelfBackground">@color/scheme_grey_shelf_background_dark</item>
+         <item name="cardDefaultBackground">@color/scheme_grey_card_background_dark</item>
+-        <item name="appLogo">@mipmap/app_logo_semi_red</item>
++        <item name="appLogo">@drawable/tihulu_wordmark</item>
+     </style>
+     <style name="ProgressBarHorizontal.Dark" parent="@android:style/Widget.ProgressBar.Horizontal">
+         <item name="android:progressDrawable">@drawable/progress_bar_red</item>
+@@ -153,7 +153,7 @@
+         <item name="cardProgressStyle">@style/ProgressBarHorizontal.Red</item>
+         <item name="shelfBackground">@color/scheme_red_shelf_background_dark</item>
+         <item name="cardDefaultBackground">@color/scheme_red_card_background_dark</item>
+-        <item name="appLogo">@mipmap/app_logo_semi_red</item>
++        <item name="appLogo">@drawable/tihulu_wordmark</item>
+     </style>
+     <style name="App.Theme.Red.Preferences" parent="App.Theme.Leanback.Preferences">
+         <item name="android:colorPrimary" tools:targetApi="21">@color/scheme_red_background_dark</item>
+@@ -193,7 +193,7 @@
+     <style name="App.Theme.DarkGrey2.OLED.Browse" parent="App.Theme.DarkGrey.OLED.Browse">
+         <item name="android:windowBackground">@color/scheme_red_shelf_background_dark</item>
+         <item name="shelfBackground">@color/scheme_red_shelf_background_dark</item>
+-        <item name="appLogo">@mipmap/app_logo_semi_grey</item>
++        <item name="appLogo">@drawable/tihulu_wordmark</item>
+         <item name="brandColor">@color/grey</item>
+         <item name="brandAccentColor">@color/grey</item>
+         <item name="cardDefaultBackground">@color/grey</item>

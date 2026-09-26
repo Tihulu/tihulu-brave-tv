@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.leanback.widget.NonOverlappingLinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="232dp" android:layout_height="52dp"
+    android:gravity="center_vertical" android:orientation="horizontal"
+    android:paddingStart="14dp" android:paddingEnd="14dp"
+    android:background="@drawable/tihulu_nav_item">
+    <ImageView android:id="@+id/header_icon"
+        android:layout_width="26dp" android:layout_height="26dp"
+        android:contentDescription="@null"/>
+    <com.liskovsoft.smartyoutubetv2.tv.ui.widgets.marqueetextviewcompat.HeaderMarqueeTextViewCompat
+        android:id="@+id/header_label" android:layout_width="0dp"
+        android:layout_weight="1" android:layout_height="wrap_content"
+        android:layout_marginStart="14dp" android:singleLine="true"
+        android:ellipsize="end" android:textColor="#F0F3FF"
+        android:textSize="17sp" android:fontFamily="sans-serif-medium"
+        style="@style/TextAppearance.Leanback.Header"/>
+</androidx.leanback.widget.NonOverlappingLinearLayout>

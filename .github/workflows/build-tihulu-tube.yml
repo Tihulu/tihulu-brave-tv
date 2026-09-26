@@ -1,0 +1,70 @@
+name: Build Tihulu Tube
+
+on:
+  push:
+    branches: [codex/tihulu-tube]
+    paths: [youtube-tv/**, .github/workflows/build-tihulu-tube.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tihulu-tube-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
+      - name: Check out pinned playback source
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          repository: yuliskov/SmartTube
+          ref: 9336539b3db340c7bcf55f95afad44d1d1abb7e4
+          submodules: recursive
+          path: .work/tihulu-tube
+          persist-credentials: false
+      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Preserve preview signing identity across builds
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: tihulu-tube-preview-signing-v1
+      - name: Prepare native app
+        run: python3 youtube-tv/prepare.py .work/tihulu-tube
+      - name: Verify low-memory profile selection
+        run: |
+          mkdir -p .work/profile-tests
+          javac -d .work/profile-tests youtube-tv/overlays/common/src/main/java/com/liskovsoft/smartyoutubetv2/common/utils/TvMemoryBudget.java youtube-tv/tests/MemoryBudgetTest.java
+          java -ea -cp .work/profile-tests MemoryBudgetTest
+      - name: Build ARM32, ARM64 and emulator APKs
+        working-directory: .work/tihulu-tube
+        run: bash gradlew --no-daemon --max-workers=2 :smarttubetv:assembleStfdroidDebug
+      - name: Verify signatures and ABI separation
+        run: |
+          signer=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
+          python3 youtube-tv/verify_apks.py .work/tihulu-tube/smarttubetv/build/outputs/apk/stfdroid/debug dist --apksigner "$signer"
+      - name: Upload both installable APKs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: TihuluTube-ARM32-ARM64-${{ github.run_number }}
+          path: dist/*
+          compression-level: 0
+          retention-days: 30
+          if-no-files-found: error
+      - name: Upload emulator APK
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: TihuluTube-emulator
+          path: .work/tihulu-tube/smarttubetv/build/outputs/apk/stfdroid/debug/*_x86.apk
+          retention-days: 3
+          if-no-files-found: error
