@@ -1,0 +1,47 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.tihulu.youtubetv'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId "com.tihulu.youtubetv"
+        minSdk 23
+        targetSdk 36
+        versionCode 1
+        versionName "0.1.0-alpha"
+    }
+
+    flavorDimensions += "abi"
+    productFlavors {
+        arm32 { dimension "abi"; ndk { abiFilters "armeabi-v7a" }; versionNameSuffix "-arm32" }
+        arm64 { dimension "abi"; ndk { abiFilters "arm64-v8a" }; versionNameSuffix "-arm64" }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        coreLibraryDesugaringEnabled true
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation "androidx.appcompat:appcompat:1.7.1"
+    implementation "androidx.recyclerview:recyclerview:1.4.0"
+    implementation "androidx.constraintlayout:constraintlayout:2.2.1"
+    implementation "com.google.android.material:material:1.12.0"
+    implementation "androidx.media3:media3-exoplayer:1.8.0"
+    implementation "androidx.media3:media3-ui:1.8.0"
+    implementation "com.squareup.okhttp3:okhttp:5.1.0"
+    implementation "com.github.bumptech.glide:glide:4.16.0"
+    implementation "com.github.TeamNewPipe:NewPipeExtractor:v0.26.4"
+    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.5"
+}
